@@ -81,5 +81,5 @@ func (c *Controller) GetPagePublicParams() (fields []string, sortby []string, or
 		}
 	}
 
-	return field, sort, orders, querys, limits, offsets, err
+	return field, sort, orders, querys, limits, offsets, nil
 }
