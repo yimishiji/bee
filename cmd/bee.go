@@ -16,22 +16,22 @@
 package cmd
 
 import (
-	"github.com/beego/bee/cmd/commands"
-	_ "github.com/beego/bee/cmd/commands/api"
-	_ "github.com/beego/bee/cmd/commands/bale"
-	_ "github.com/beego/bee/cmd/commands/beefix"
-	_ "github.com/beego/bee/cmd/commands/dlv"
-	_ "github.com/beego/bee/cmd/commands/dockerize"
-	_ "github.com/beego/bee/cmd/commands/generate"
-	_ "github.com/beego/bee/cmd/commands/hprose"
-	_ "github.com/beego/bee/cmd/commands/migrate"
-	_ "github.com/beego/bee/cmd/commands/new"
-	_ "github.com/beego/bee/cmd/commands/pack"
-	_ "github.com/beego/bee/cmd/commands/rs"
-	_ "github.com/beego/bee/cmd/commands/run"
-	_ "github.com/beego/bee/cmd/commands/server"
-	_ "github.com/beego/bee/cmd/commands/version"
-	"github.com/beego/bee/utils"
+	"github.com/yimishiji/bee/cmd/commands"
+	_ "github.com/yimishiji/bee/cmd/commands/api"
+	_ "github.com/yimishiji/bee/cmd/commands/bale"
+	_ "github.com/yimishiji/bee/cmd/commands/beefix"
+	_ "github.com/yimishiji/bee/cmd/commands/dlv"
+	_ "github.com/yimishiji/bee/cmd/commands/dockerize"
+	_ "github.com/yimishiji/bee/cmd/commands/generate"
+	_ "github.com/yimishiji/bee/cmd/commands/hprose"
+	_ "github.com/yimishiji/bee/cmd/commands/migrate"
+	_ "github.com/yimishiji/bee/cmd/commands/new"
+	_ "github.com/yimishiji/bee/cmd/commands/pack"
+	_ "github.com/yimishiji/bee/cmd/commands/rs"
+	_ "github.com/yimishiji/bee/cmd/commands/run"
+	_ "github.com/yimishiji/bee/cmd/commands/server"
+	_ "github.com/yimishiji/bee/cmd/commands/version"
+	"github.com/yimishiji/bee/utils"
 )
 
 func IfGenerateDocs(name string, args []string) bool {
@@ -46,7 +46,7 @@ func IfGenerateDocs(name string, args []string) bool {
 	return false
 }
 
-var usageTemplate = `Bee is a Fast and Flexible tool for managing your Beego Web Application.
+var usageTemplate = `Bee is a Fast and Flexible tool for managing your Beego Web Application Powerby Yimishiji.
 
 {{"USAGE" | headline}}
     {{"bee command [arguments]" | bold}}

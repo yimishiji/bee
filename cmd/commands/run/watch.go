@@ -24,11 +24,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/beego/bee/config"
-	beeLogger "github.com/beego/bee/logger"
-	"github.com/beego/bee/logger/colors"
-	"github.com/beego/bee/utils"
 	"github.com/fsnotify/fsnotify"
+	"github.com/yimishiji/bee/config"
+	beeLogger "github.com/yimishiji/bee/logger"
+	"github.com/yimishiji/bee/logger/colors"
+	"github.com/yimishiji/bee/utils"
 )
 
 var (
@@ -148,7 +148,7 @@ func AutoBuild(files []string, isgenerate bool) {
 	}
 	appName := appname
 	if err == nil {
-		
+
 		if runtime.GOOS == "windows" {
 			appName += ".exe"
 		}
