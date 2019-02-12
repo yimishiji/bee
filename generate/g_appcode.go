@@ -1141,12 +1141,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/astaxie/beego"
+	"github.com/yimishiji/bee/components/base"
+	"github.com/yimishiji/bee/utils"
 )
 
 // {{ctrlName}}Controller operations for {{ctrlName}}
 type {{ctrlName}}Controller struct {
-	beego.Controller
+	base.Controller
 }
 
 // URLMapping ...
@@ -1170,12 +1171,12 @@ func (c *{{ctrlName}}Controller) Post() {
 	if err := json.Unmarshal(c.Ctx.Input.RequestBody, &v); err == nil {
 		if _, err := models.Add{{ctrlName}}(&v); err == nil {
 			c.Ctx.Output.SetStatus(201)
-			c.Data["json"] = v
+			c.Data["json"] = c.Resp(utils.ApiCode_SUCC, "ok", v)
 		} else {
-			c.Data["json"] = err.Error()
+			c.Data["json"] = c.Resp(utils.ApiCode_SYS_ERROR, "system error", err.Error())
 		}
 	} else {
-		c.Data["json"] = err.Error()
+		c.Data["json"] = c.Resp(utils.ApiCode_VALIDATE_ERROR, "verification failed", err.Error())
 	}
 	c.ServeJSON()
 }
@@ -1192,9 +1193,9 @@ func (c *{{ctrlName}}Controller) GetOne() {
 	id, _ := strconv.Atoi(idStr)
 	v, err := models.Get{{ctrlName}}ById(id)
 	if err != nil {
-		c.Data["json"] = err.Error()
+		c.Data["json"] = c.Resp(utils.ApiCode_VALIDATE_ERROR, "not find", err.Error())
 	} else {
-		c.Data["json"] = v
+		c.Data["json"] = c.Resp(utils.ApiCode_SUCC, "ok", v)
 	}
 	c.ServeJSON()
 }
@@ -1244,7 +1245,7 @@ func (c *{{ctrlName}}Controller) GetAll() {
 		for _, cond := range strings.Split(v, ",") {
 			kv := strings.SplitN(cond, ":", 2)
 			if len(kv) != 2 {
-				c.Data["json"] = errors.New("Error: invalid query key/value pair")
+				c.Data["json"] = c.Resp(utils.ApiCode_ILLEGAL_ERROR, "illegal operation", errors.New("Error: invalid query key/value pair"))
 				c.ServeJSON()
 				return
 			}
@@ -1255,9 +1256,9 @@ func (c *{{ctrlName}}Controller) GetAll() {
 
 	l, err := models.GetAll{{ctrlName}}(query, fields, sortby, order, offset, limit)
 	if err != nil {
-		c.Data["json"] = err.Error()
+		c.Data["json"] = c.Resp(utils.ApiCode_ILLEGAL_ERROR, "not find", err.Error())
 	} else {
-		c.Data["json"] = l
+		c.Data["json"] = c.Resp(utils.ApiCode_SUCC, "ok", l)
 	}
 	c.ServeJSON()
 }
@@ -1276,12 +1277,12 @@ func (c *{{ctrlName}}Controller) Put() {
 	v := models.{{ctrlName}}{Id: id}
 	if err := json.Unmarshal(c.Ctx.Input.RequestBody, &v); err == nil {
 		if err := models.Update{{ctrlName}}ById(&v); err == nil {
-			c.Data["json"] = "OK"
+			c.Data["json"] = c.Resp(utils.ApiCode_SUCC, "ok")
 		} else {
-			c.Data["json"] = err.Error()
+			c.Data["json"] = c.Resp(utils.ApiCode_SYS_ERROR, "system error", err.Error())
 		}
 	} else {
-		c.Data["json"] = err.Error()
+		c.Data["json"] = c.Resp(utils.ApiCode_VALIDATE_ERROR, "verification failed", err.Error())
 	}
 	c.ServeJSON()
 }
@@ -1297,9 +1298,9 @@ func (c *{{ctrlName}}Controller) Delete() {
 	idStr := c.Ctx.Input.Param(":id")
 	id, _ := strconv.Atoi(idStr)
 	if err := models.Delete{{ctrlName}}(id); err == nil {
-		c.Data["json"] = "OK"
+		c.Data["json"] = c.Resp(utils.ApiCode_SUCC, "ok")
 	} else {
-		c.Data["json"] = err.Error()
+		c.Data["json"] = c.Resp(utils.ApiCode_ILLEGAL_ERROR, "illegal operation", err.Error())
 	}
 	c.ServeJSON()
 }
