@@ -987,7 +987,6 @@ const (
 	ModelTPL = `package models
 
 import (
-	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -1026,8 +1025,8 @@ func Get{{modelName}}ById(id int) (v *{{modelName}}, err error) {
 
 // GetAll{{modelName}} retrieves all {{modelName}} matches certain condition. Returns empty list if
 // no records exist
-func GetAll{{modelName}}(query map[string]string, fields []string, sortby []string, order []string,
-	offset int64, limit int64) (ml []interface{}, err error) {
+func GetAll{{modelName}}(query map[string]string, fields []string, sortby []string, offset int64,
+	limit int64) (ml []interface{}, err error) {
 	o := orm.NewOrm()
 	qs := o.QueryTable(new({{modelName}}))
 	// query k=v
@@ -1041,46 +1040,9 @@ func GetAll{{modelName}}(query map[string]string, fields []string, sortby []stri
 		}
 	}
 	// order by:
-	var sortFields []string
-	if len(sortby) != 0 {
-		if len(sortby) == len(order) {
-			// 1) for each sort field, there is an associated order
-			for i, v := range sortby {
-				orderby := ""
-				if order[i] == "desc" {
-					orderby = "-" + v
-				} else if order[i] == "asc" {
-					orderby = v
-				} else {
-					return nil, errors.New("Error: Invalid order. Must be either [asc|desc]")
-				}
-				sortFields = append(sortFields, orderby)
-			}
-			qs = qs.OrderBy(sortFields...)
-		} else if len(sortby) != len(order) && len(order) == 1 {
-			// 2) there is exactly one order, all the sorted fields will be sorted by this order
-			for _, v := range sortby {
-				orderby := ""
-				if order[0] == "desc" {
-					orderby = "-" + v
-				} else if order[0] == "asc" {
-					orderby = v
-				} else {
-					return nil, errors.New("Error: Invalid order. Must be either [asc|desc]")
-				}
-				sortFields = append(sortFields, orderby)
-			}
-		} else if len(sortby) != len(order) && len(order) != 1 {
-			return nil, errors.New("Error: 'sortby', 'order' sizes mismatch or 'order' size is not 1")
-		}
-	} else {
-		if len(order) != 0 {
-			return nil, errors.New("Error: unused 'order' fields")
-		}
-	}
+    qs = qs.OrderBy(sortby...)
 
 	var l []{{modelName}}
-	qs = qs.OrderBy(sortFields...)
 	if _, err = qs.Limit(limit, offset).All(&l, fields...); err == nil {
 		if len(fields) == 0 {
 			for _, v := range l {
@@ -1211,14 +1173,14 @@ func (c *{{ctrlName}}Controller) GetOne() {
 // @Failure 403
 // @router / [get]
 func (c *{{ctrlName}}Controller) GetAll() {
-	fields, sortby, order, query, limit, offset, err := c.GetPagePublicParams()
+	fields, sortby, query, limit, offset, err := c.GetPagePublicParams()
 
 	if err != nil {
 		c.Data["json"] = c.Resp(utils.ApiCode_ILLEGAL_ERROR, "illegal operation", err)
 		c.ServeJSON()
 	}
 
-	l, err := models.GetAll{{ctrlName}}(query, fields, sortby, order, offset, limit)
+	l, err := models.GetAllBpmWorkflows(query, fields, sortby, offset, limit)
 	if err != nil {
 		c.Data["json"] = c.Resp(utils.ApiCode_ILLEGAL_ERROR, "not find", err.Error())
 	} else {

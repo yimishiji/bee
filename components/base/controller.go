@@ -40,13 +40,14 @@ func (c *Controller) Resp(appCode utils.ApiCode, msg string, data ...interface{}
 	return resp
 }
 
-func (c *Controller) GetPagePublicParams() (fields []string, sortby []string, order []string, query map[string]string, limit int64, offset int64, err error) {
+func (c *Controller) GetPagePublicParams() (fields []string, sortby []string, query map[string]string, limit int64, offset int64, err error) {
 	var field []string
 	var sort []string
 	var orders []string
 	var querys = make(map[string]string)
 	var limits int64 = 10
 	var offsets int64
+	var sortFields []string
 
 	// fields: col1,col2,entity.col3
 	if v := c.GetString("fields"); v != "" {
@@ -74,12 +75,49 @@ func (c *Controller) GetPagePublicParams() (fields []string, sortby []string, or
 		for _, cond := range strings.Split(v, ",") {
 			kv := strings.SplitN(cond, ":", 2)
 			if len(kv) != 2 {
-				return field, sort, orders, querys, limits, offsets, errors.New("Error: invalid query key/value pair")
+				return field, sortFields, querys, limits, offsets, errors.New("Error: invalid query key/value pair")
 			}
 			k, v := kv[0], kv[1]
 			querys[k] = v
 		}
 	}
 
-	return field, sort, orders, querys, limits, offsets, nil
+	// order by:
+	if len(sort) != 0 {
+		if len(sort) == len(orders) {
+			// 1) for each sort field, there is an associated order
+			for i, v := range sort {
+				orderby := ""
+				if orders[i] == "desc" {
+					orderby = "-" + v
+				} else if orders[i] == "asc" {
+					orderby = v
+				} else {
+					return field, sortFields, querys, limits, offsets, errors.New("Error: Invalid order. Must be either [asc|desc]")
+				}
+				sortFields = append(sortFields, orderby)
+			}
+		} else if len(sort) != len(orders) && len(orders) == 1 {
+			// 2) there is exactly one order, all the sorted fields will be sorted by this order
+			for _, v := range sort {
+				orderby := ""
+				if orders[0] == "desc" {
+					orderby = "-" + v
+				} else if orders[0] == "asc" {
+					orderby = v
+				} else {
+					return field, sortFields, querys, limits, offsets, errors.New("Error: Invalid order. Must be either [asc|desc]")
+				}
+				sortFields = append(sortFields, orderby)
+			}
+		} else if len(sort) != len(orders) && len(orders) != 1 {
+			return field, sortFields, querys, limits, offsets, errors.New("Error: 'sortby', 'order' sizes mismatch or 'order' size is not 1")
+		}
+	} else {
+		if len(orders) != 0 {
+			return field, sortFields, querys, limits, offsets, errors.New("Error: unused 'order' fields")
+		}
+	}
+
+	return field, sortFields, querys, limits, offsets, nil
 }
