@@ -34,6 +34,7 @@ const (
 	OModel byte = 1 << iota
 	OController
 	ORouter
+	OVue
 )
 
 // DbTransformer has method to reverse engineer a database schema to restful api code
@@ -62,6 +63,7 @@ type MvcPath struct {
 	ModelPath      string
 	ControllerPath string
 	RouterPath     string
+	VuePath        string
 }
 
 // typeMapping maps SQL data type to corresponding Go data type
@@ -272,6 +274,8 @@ func GenerateAppcode(driver, connStr, level, tables, currpath string) {
 		mode = OModel | OController
 	case "3":
 		mode = OModel | OController | ORouter
+	case "4":
+		mode = OModel | OController | ORouter | OVue
 	default:
 		beeLogger.Log.Fatal("Invalid level value. Must be either \"1\", \"2\", or \"3\"")
 	}
@@ -316,6 +320,8 @@ func gen(dbms, connStr string, mode byte, selectedTableNames map[string]bool, ap
 		mvcPath.ModelPath = path.Join(apppath, "models")
 		mvcPath.ControllerPath = path.Join(apppath, "controllers")
 		mvcPath.RouterPath = path.Join(apppath, "routers")
+		mvcPath.VuePath = path.Join(apppath, "vue/src/components")
+
 		createPaths(mode, mvcPath)
 		pkgPath := getPackagePath(apppath)
 		writeSourceFiles(pkgPath, tables, mode, mvcPath)
@@ -723,6 +729,9 @@ func createPaths(mode byte, paths *MvcPath) {
 	if (mode & ORouter) == ORouter {
 		os.Mkdir(paths.RouterPath, 0777)
 	}
+	if (mode & OVue) == OVue {
+		os.Mkdir(paths.VuePath, 0777)
+	}
 }
 
 // writeSourceFiles generates source files for model/controller/router
@@ -740,6 +749,10 @@ func writeSourceFiles(pkgPath string, tables []*Table, mode byte, paths *MvcPath
 	if (ORouter & mode) == ORouter {
 		beeLogger.Log.Info("Creating router files...")
 		writeRouterFile(tables, paths.RouterPath, pkgPath)
+	}
+	if (OVue & mode) == OVue {
+		beeLogger.Log.Info("Creating router files...")
+		writeVueControllerIndex(tables, paths.VuePath, pkgPath)
 	}
 }
 
@@ -871,6 +884,7 @@ func writeRouterFile(tables []*Table, rPath string, pkgPath string) {
 			}
 		} else {
 			beeLogger.Log.Warnf("Skipped create file '%s'", fpath)
+			beeLogger.Log.Warnf("add to file this route \n '%s'\n", strings.Join(nameSpaces, ""))
 			return
 		}
 	} else {
@@ -886,6 +900,119 @@ func writeRouterFile(tables []*Table, rPath string, pkgPath string) {
 	utils.CloseFile(f)
 	fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpath, "\x1b[0m")
 	utils.FormatSourceCode(fpath)
+}
+
+// writeControllerFiles generates controller files
+func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
+	w := colors.NewColorWriter(os.Stdout)
+
+	for _, tb := range tables {
+		if tb.Pk == "" {
+			continue
+		}
+		filename := getFileName(tb.Name)
+
+		cBase := cPath + string(os.PathSeparator) + filename
+		os.Mkdir(cBase, 0777)
+
+		//列表
+		fpathIndex := path.Join(cBase, "Index.vue")
+		var f *os.File
+		var err error
+		if utils.IsExist(fpathIndex) {
+			beeLogger.Log.Warnf("'%s' already exists. Do you want to overwrite it? [Yes|No] ", fpathIndex)
+			if utils.AskForConfirmation() {
+				f, err = os.OpenFile(fpathIndex, os.O_RDWR|os.O_TRUNC, 0666)
+				if err != nil {
+					beeLogger.Log.Warnf("%s", err)
+					continue
+				}
+			} else {
+				beeLogger.Log.Warnf("Skipped create file '%s'", fpathIndex)
+				continue
+			}
+		} else {
+			f, err = os.OpenFile(fpathIndex, os.O_CREATE|os.O_RDWR, 0666)
+			if err != nil {
+				beeLogger.Log.Warnf("%s", err)
+				continue
+			}
+		}
+		fileStr := strings.Replace(VueIndexTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
+		fileStr = strings.Replace(fileStr, "{{tbName}}", tb.Name, -1)
+		fileStr = strings.Replace(fileStr, "{{tbPk}}", tb.Pk, -1)
+		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
+		if _, err := f.WriteString(fileStr); err != nil {
+			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpathIndex, err)
+		}
+		utils.CloseFile(f)
+		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpathIndex, "\x1b[0m")
+		utils.FormatSourceCode(fpathIndex)
+
+		//创建组件
+		fpathIndex = path.Join(cBase, "CreateComponent.vue")
+		if utils.IsExist(fpathIndex) {
+			beeLogger.Log.Warnf("'%s' already exists. Do you want to overwrite it? [Yes|No] ", fpathIndex)
+			if utils.AskForConfirmation() {
+				f, err = os.OpenFile(fpathIndex, os.O_RDWR|os.O_TRUNC, 0666)
+				if err != nil {
+					beeLogger.Log.Warnf("%s", err)
+					continue
+				}
+			} else {
+				beeLogger.Log.Warnf("Skipped create file '%s'", fpathIndex)
+				continue
+			}
+		} else {
+			f, err = os.OpenFile(fpathIndex, os.O_CREATE|os.O_RDWR, 0666)
+			if err != nil {
+				beeLogger.Log.Warnf("%s", err)
+				continue
+			}
+		}
+		fileStr = strings.Replace(VueCreateComponentTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
+		fileStr = strings.Replace(fileStr, "{{tbName}}", tb.Name, -1)
+		fileStr = strings.Replace(fileStr, "{{tbPk}}", tb.Pk, -1)
+		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
+		if _, err := f.WriteString(fileStr); err != nil {
+			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpathIndex, err)
+		}
+		utils.CloseFile(f)
+		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpathIndex, "\x1b[0m")
+		utils.FormatSourceCode(fpathIndex)
+
+		//编辑组件
+		fpathIndex = path.Join(cBase, "EditComponent.vue")
+		if utils.IsExist(fpathIndex) {
+			beeLogger.Log.Warnf("'%s' already exists. Do you want to overwrite it? [Yes|No] ", fpathIndex)
+			if utils.AskForConfirmation() {
+				f, err = os.OpenFile(fpathIndex, os.O_RDWR|os.O_TRUNC, 0666)
+				if err != nil {
+					beeLogger.Log.Warnf("%s", err)
+					continue
+				}
+			} else {
+				beeLogger.Log.Warnf("Skipped create file '%s'", fpathIndex)
+				continue
+			}
+		} else {
+			f, err = os.OpenFile(fpathIndex, os.O_CREATE|os.O_RDWR, 0666)
+			if err != nil {
+				beeLogger.Log.Warnf("%s", err)
+				continue
+			}
+		}
+		fileStr = strings.Replace(vueEditComponentTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
+		fileStr = strings.Replace(fileStr, "{{tbName}}", tb.Name, -1)
+		fileStr = strings.Replace(fileStr, "{{tbPk}}", tb.Pk, -1)
+		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
+		if _, err := f.WriteString(fileStr); err != nil {
+			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpathIndex, err)
+		}
+		utils.CloseFile(f)
+		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpathIndex, "\x1b[0m")
+		utils.FormatSourceCode(fpathIndex)
+	}
 }
 
 func isSQLTemporalType(t string) bool {
@@ -1265,5 +1392,493 @@ func init() {
 				&controllers.{{ctrlName}}Controller{},
 			),
 		),
+`
+	VueIndexTPL = `
+<template>
+    <div class="main">
+        <div class="top">
+            <v-select placeholder="请选择类型" size="lg" class="change" v-model="searchType" :data="options"></v-select>
+            <div class="search">
+                <v-input placeholder="请输入" size="large" v-model="searchText" class="distance-up10" @keyup.enter.native="refreshTable()"></v-input>
+                <v-button type="primary" class="search-button" @click="refreshTable()" size="large">搜&nbsp;索</v-button>
+            </div>
+            <v-button type="primary" class="add-button" size="large" @click="create" >
+                <v-icon type="plus"></v-icon>
+                &nbsp;&nbsp;添加
+            </v-button>
+        </div>
+        <div class="table goods">
+            <v-data-table :data='loadData' :columns='columns' ref="xtable" stripe bordered >
+                <template slot="td" slot-scope="props" attrs='width="502px"'>
+
+                    <div v-if="props.column.field=='action'" class="operate">
+                        <span @click="view(props.item)">
+                            <v-tooltip content="查看" placement="top" ><v-icon type="eye-o"></v-icon></v-tooltip>
+                        </span>
+                        <span @click="edit(props.item)">
+                            <v-tooltip content="编辑" placement="top" ><v-icon type="edit"></v-icon></v-tooltip>
+                        </span>
+                        <v-popconfirm :placement="props.index==0 ? 'bottom' : 'top'" title=" 确定删除吗?" @confirm="del(props.item)">
+                            <v-tooltip content="删除标签" placement="top" ><i class="fa fa-trash-o "></i></v-tooltip>
+                        </v-popconfirm>
+                    </div>
+
+                    <span v-else v-html="props.content"></span>
+                </template>
+            </v-data-table>
+        </div>
+        <create-item @refreshList="refreshTable" ref="createRef"></create-item>
+        <edit-item @refreshList="refreshTable" ref="editRef"></edit-item>
+
+    </div>
+</template>
+
+<script>
+    import {domainHost,  hostName} from '../../config/api'
+    import { formatDate } from '../../common/date'
+    import createVue from './CreateComponent.vue'
+    import editVue from './EditComponent.vue'
+
+    const IndexApi = hostName+"v1/{{tbName}}";
+    const DeleteAPI = hostName+"v1/{{tbName}}";
+
+    export default {
+        data () {
+            return {
+                //下拉搜索选择
+                options    : [
+                    { value: 'title', label: '标题' },
+                    { value: 'platform', label: '平台' },
+                    { value: 'description', label: '简述' },
+                ],
+                //下拉选中
+                searchType : '',
+                //搜索框
+                searchText : '',
+                //商品列表---状态
+                checkYes   : 1,
+                checkNo    : 1,
+                checkStatus: '',
+                //商品列表头部
+                columns    : [
+                    {title: "Id", field: 'Id'},
+                    {title: "Type", field: 'Type'},
+                    {title: "CreatedAt", field: 'CreatedAt'},
+                    {title: "UpdatedAt", field: 'UpdatedAt'},
+                    {title: "Name", field: 'Name'},
+                    {title: "Description", field: 'Description'},
+                    {title: "Operate", field: "action"},
+                ],
+            }
+        },
+        created: function () {
+            this.$store.state.BreadShow = true;
+            this.$store.state.oneValue = {value: "Index", url: ""};
+            this.$store.state.twoValue = {value: '{{tbName}}', url: ""};
+            this.$store.state.threeValue = {value: "List", url: ""};
+        },
+        components:{
+            'create-item': createVue,
+            'edit-item': editVue
+        },
+        methods: {
+            refreshTable:function () {
+              this.$refs.xtable.refresh();
+            },
+            loadData(pramas) {
+                let params = {
+                    'limit': pramas.pageSize,
+                    'page': pramas.pageNo,
+                    'order':'desc',
+                    'sortby':"{{tbPk}}",
+                    //'query':{}
+                };
+
+                if(this.searchType){
+                    params[ "query["+this.searchType+"]"] = this.searchText;
+                }else if(this.searchText){
+                    params[ "query[title]"] = this.searchText;
+                }
+
+                return this.$http.get(IndexApi,{ params }).then(resp =>{
+
+                    if (resp.data.status == 1){
+
+                        var result = resp.data.results[0];
+                        console.log("result", result);
+
+                        let list = result.list;
+
+                        //for (let i in list) {
+                        //    list[i].createAt = this.format(list[i].createAt);
+                        //}
+
+                        let listdata = {};
+                        listdata['result'] = list;
+                        listdata['totalCount'] = Number(result.totalCount);
+                        return listdata;
+                    }
+                });
+            },
+            create: function () {
+                this.$refs.createRef.show = true;
+            },
+            view: function (item) {
+                this.$refs.editRef.id = item.{{tbPk}};
+                for (let key in item) {
+                    this.$refs.editRef.customForm[key] = item[key];
+                }
+                this.$refs.editRef.updateMode = false
+                this.$refs.editRef.show = true;
+            },
+            edit: function (item) {
+                this.$refs.editRef.id = item.{{tbPk}};
+                for (let key in item) {
+                    this.$refs.editRef.customForm[key] = item[key];
+                }
+                this.$refs.editRef.updateMode = true;
+                this.$refs.editRef.show = true;
+            },
+            del:function (item) {
+                this.$store.state.loading     = true;
+                this.$http.delete(DeleteAPI+"/"+item.{{tbPk}}).then(resp=> {
+                    this.$store.state.loading = false;
+                    if(resp.data.debug){
+                        this.$store.state.toolbarIndex =  domainHost+resp.data.debug.url;
+                    }
+                    if (resp.data.status == 1) {
+                        this.$notification.success({
+                            message    : '提示',
+                            duration   : 2,
+                            description: "删除成功"
+                        });
+                        this.refreshTable();
+                    }
+                });
+            },
+            format:function(time){
+                let date = new Date(parseInt(time));
+                return formatDate(date,'yyyy-MM-dd hh:mm:ss');
+            }
+        }
+    }
+</script>
+
+<style scoped>
+   .main{
+       padding: 24px;
+       width: 100%;
+       min-height: calc(100% - 52px);
+       overflow: auto;
+       background: #fff;
+   }
+   .top {
+       min-width: 540px;
+       height: 38px;
+       text-align: left;
+   }
+   /* 下拉 */
+   .top .change {
+       margin-right: 10px;
+       width: 100px;
+       float: left;
+   }
+   /* 搜索 */
+   .top .add-button {
+       margin-left: 10px;
+       float: left;
+   }
+   .top .search {
+       width: 330px;
+       height: 32px;
+       float: left;
+       position: relative;
+   }
+   .top .search input {
+       padding: 6px 8px 6px 6px;
+       width: 260px;
+       float: left;
+       box-shadow:none !important;
+   }
+   .top .search .search-button {
+       width: 70px;
+       height: 32px;
+       position: absolute;
+       top: 0px;
+       right: 4px;
+       z-index: 10;
+       border-bottom-left-radius: 0px;
+       border-top-left-radius: 0px;
+   }
+   /* 列表 */
+   .table {
+       margin-top: 10px;
+       width: 100%;
+   }
+    .table .new{
+        width: 20px;
+        height:20px;
+        position:absolute;
+        top:0px;
+        left:0px;
+        z-index: 10;
+        border-width:20px 20px 0px 0px;
+        border-style:solid;
+        border-color:#fbc900 transparent transparent;
+    }
+    .table .new-zi{
+        color: #ffffff;
+        position: absolute;
+        top: -2px;
+        left: 1px;
+        z-index: 11;
+    }
+</style>
+`
+	VueCreateComponentTPL = `<template>
+    <v-modal class="model" title="创建消息" :width='540' :visible="show" @cancel="ruleCancel">
+        <v-form direction="horizontal" :model="customForm" :rules="customRules" ref="customRuleForm"  @keyup.enter.native="submitForm('customRuleForm')">
+            <v-form-item label="接收的员工id" :label-col="labelCol" :wrapper-col="wrapperCol" prop="touser" has-feedback>
+                <v-input v-model="customForm.touser" size="large"></v-input>
+            </v-form-item>
+            <v-form-item label="接收的员工tagid" :label-col="labelCol" :wrapper-col="wrapperCol" prop="totag" has-feedback>
+                <v-input v-model="customForm.totag" size="large"></v-input>
+            </v-form-item>
+            <v-form-item label="消息标题" :label-col="labelCol" :wrapper-col="wrapperCol" prop="title" has-feedback>
+                <v-input v-model="customForm.title" size="large"></v-input>
+            </v-form-item>
+            <v-form-item label="消息描述" :label-col="labelCol" :wrapper-col="wrapperCol" prop="description" has-feedback>
+                <v-input  type="textarea" v-model="customForm.description" size="large"></v-input>
+            </v-form-item>
+
+            <div class="layer-button">
+                <v-button type="primary" @click="submitForm" :loading="this.$store.state.loading">{{
+                    this.$store.state.loading ?
+                    "正在发送中" : "确认" }}
+                </v-button>
+                <v-button @click="ruleCancel">取消</v-button>
+            </div>
+        </v-form>
+    </v-modal>
+</template>
+
+<script>
+  import {hostName} from '../../config/api';
+  const createApi = hostName + "v1/{{tbName}}";
+
+  export default {
+      data() {
+          return {
+              customForm: {
+                  touser     : '',
+                  totag      : '',
+                  title      : '',
+                  description: ''
+              },
+              show: false,
+              customRules:{
+                  title:[
+                      {required: true, message: '请输入消息标题',trigger: 'blur'}
+                  ]
+              },
+              labelCol: {
+                  span: 6
+              },
+              wrapperCol: {
+                  span: 14
+              }
+          }
+      },
+      methods: {
+          submitForm: function () {
+
+              let params = this.customForm;
+
+              this.$store.state.loading     = true;
+              this.$http.post(createApi, this.$qs.stringify(params)).then(resp=> {
+                  this.$store.state.loading = false;
+                  if (resp.data.status == 1) {
+                      this.$notification.success({
+                          message    : '提示',
+                          duration   : 2,
+                          description: "创建成功"
+                      });
+                      this.ruleCancel();
+                      this.$emit('refreshList');
+                  }
+              });
+          },
+          //取消
+          ruleCancel: function () {
+              this.show = false;
+          }
+      }
+  }
+</script>
+
+<style scoped>
+    .text-input {
+        margin: 10px auto;
+        width: 80%;
+        text-align: center;
+    }
+</style>
+`
+	vueEditComponentTPL = `<template>
+    <v-modal class="add-user"  :title=" updateMode ? '编辑' : '详情' " :width='640' :visible="show" @cancel="ruleCancel">
+        <v-form direction="horizontal"  v-bind:class="{ 'view-mode': !updateMode }" :model="customForm" :rules="customRules" ref="customRuleForm" @keyup.enter.native="submitForm('customRuleForm')">
+            <v-form-item label="消息id" :label-col="labelCol" :wrapper-col="wrapperCol">
+                <span class="ant-form-text">{{customForm._id}}</span>
+            </v-form-item>
+            <v-form-item label="员工标签" :label-col="labelCol" :wrapper-col="wrapperCol" prop="totag" has-feedback>
+                <v-input v-if="updateMode"  v-model="customForm.totag" size="large"></v-input>
+                <span v-if="!updateMode"  class="ant-form-text">{{customForm.totag}}</span>
+            </v-form-item>
+            <v-form-item label="员工id" :label-col="labelCol" :wrapper-col="wrapperCol" prop="touser" has-feedback>
+                <v-input v-if="updateMode"  v-model="customForm.touser" size="large"></v-input>
+                <span v-if="!updateMode"  class="ant-form-text">{{customForm.touser}}</span>
+            </v-form-item>
+            <v-form-item label="部门id" :label-col="labelCol" :wrapper-col="wrapperCol" prop="toparty" has-feedback>
+                <v-input v-if="updateMode"  v-model="customForm.toparty" size="large"></v-input>
+                <span v-if="!updateMode"  class="ant-form-text">{{customForm.toparty}}</span>
+            </v-form-item>
+            <v-form-item label="消息标题" :label-col="labelCol" :wrapper-col="wrapperCol" prop="title" has-feedback>
+                <v-input v-if="updateMode"  v-model="customForm.title" size="large"></v-input>
+                <span v-if="!updateMode"  class="ant-form-text">{{customForm.title}}</span>
+            </v-form-item>
+            <v-form-item label="消息简述" :label-col="labelCol" :wrapper-col="wrapperCol" prop="description" has-feedback>
+                <v-input v-if="updateMode"  v-model="customForm.description" size="large"></v-input>
+                <span v-if="!updateMode"  class="ant-form-text">{{customForm.description}}</span>
+            </v-form-item>
+            <v-form-item label="消息详情url" :label-col="labelCol" :wrapper-col="wrapperCol" prop="url" has-feedback>
+                <v-input v-if="updateMode"  v-model="customForm.url" size="large"></v-input>
+                <span v-if="!updateMode"  class="ant-form-text">{{customForm.url}}</span>
+            </v-form-item>
+            <v-form-item label="消息图片" :label-col="labelCol" :wrapper-col="wrapperCol" prop="picurl" has-feedback>
+                <v-input v-if="updateMode"  v-model="customForm.picurl" size="large"></v-input>
+                <span v-if="!updateMode"  class="ant-form-text">{{customForm.picurl}}</span>
+            </v-form-item>
+            <v-form-item label="内容" :label-col="labelCol" :wrapper-col="wrapperCol" prop="content" has-feedback>
+                <v-input v-if="updateMode"  v-model="customForm.content" size="large"></v-input>
+                <span v-if="!updateMode"  class="ant-form-text">{{customForm.content}}</span>
+            </v-form-item>
+            <v-form-item label="路径跟踪" :label-col="labelCol" :wrapper-col="wrapperCol" prop="backtrace" has-feedback>
+                <v-input v-if="updateMode"  v-model="customForm.backtrace" size="large"></v-input>
+                <span v-if="!updateMode"  class="ant-form-text">{{customForm.backtrace}}</span>
+            </v-form-item>
+            <v-form-item label="送达状态" :label-col="labelCol" :wrapper-col="wrapperCol" prop="send_success" has-feedback>
+                <v-input v-if="updateMode"  v-model="customForm.send_success" size="large"></v-input>
+                <span v-if="!updateMode"  class="ant-form-text">{{customForm.send_success}}</span>
+            </v-form-item>
+            <v-form-item label="企业微信接口响应" :label-col="labelCol" :wrapper-col="wrapperCol" prop="send_response" has-feedback>
+                <v-input v-if="updateMode"  v-model="customForm.send_response" size="large"></v-input>
+                <span v-if="!updateMode"  class="ant-form-text">{{customForm.send_response}}</span>
+            </v-form-item>
+            <v-form-item label="创建时间" :label-col="labelCol" :wrapper-col="wrapperCol" prop="tagname" has-feedback>
+                <span class="ant-form-text">{{customForm.createAt}}</span>
+            </v-form-item>
+            <div class="layer-button">
+                <v-button v-if="updateMode" type="primary" style="margin-right:10px" @click.prevent="submitForm('customRuleForm')" :loading="loading">{{ loading ? "正在修改中" : "马上修改" }}</v-button>
+                <v-button type="ghost" @click.prevent="ruleCancel()">{{ updateMode ? "取消" : "关闭" }}</v-button>
+            </div>
+        </v-form>
+    </v-modal>
+</template>
+
+<script>
+  import {hostName} from '../../config/api'
+  const UpdateAPI = hostName + "v1/{{tbName}}/{{tbPk}}";
+
+  export default {
+      data() {
+          return {
+              id     : '',
+              show      : false,
+              loading   : false,
+              updateMode: false,
+              customForm: {
+                  backtrace: null,
+                  btntxt:  null,
+                  content:  null,
+                  createAt:  null,
+                  description:  null,
+                  picurl:  null,
+                  platform:  null,
+                  send_response: null,
+                  send_success: true,
+                  title:  null,
+                  toparty:  null,
+                  totag:  null,
+                  touser: null,
+                  url: null,
+                  _id:  null
+              },
+              customRules:{
+                  title:[
+                      {required: true, message: '请输入标签名称',trigger: 'blur'}
+                  ]
+              },
+              labelCol: {
+                  span: 6
+              },
+              wrapperCol: {
+                  span: 14
+              }
+          }
+      },
+      methods: {
+          submitForm: function (formName) {
+              this.$refs[formName].validate((valid) => {
+                  if(valid) {
+                      let params = {
+                          tagId  : this.customForm.tagid,
+                          tagName: this.customForm.tagname,
+                      };
+
+                      this.loading     = true;
+                      this.$http.put(UpdateAPI, this.$qs.stringify(params)).then(resp => {
+                          this.loading = false;
+                          if (resp.data.status == 1) {
+                              this.$notification.success({
+                                  message    : '提示',
+                                  duration   : 2,
+                                  description: resp.data.status_txt
+                              });
+                              this.ruleCancel();
+                              this.$emit('refreshList');
+                          }
+                          if(resp.data.debug){
+                              this.$store.state.toolbarIndex =  domainHost+resp.data.debug.url;
+                          }
+                      });
+                  }else{
+                      alert(valid);
+                  }
+              });
+          },
+          //取消
+          ruleCancel: function () {
+              this.show = false;
+              this.loading = false;
+              this.id = false;
+              this.customForm = {};
+          }
+      }
+  }
+</script>
+
+<style scoped>
+    .text-input {
+        margin: 10px auto;
+        width: 80%;
+        text-align: center;
+    }
+    .view-mode .ant-form-item{
+        margin-bottom: 0px;
+    }
+    .view-mode .ant-form-item-required:before{
+        display:none;
+    }
+</style>
 `
 )

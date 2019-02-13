@@ -27,7 +27,7 @@ type Resp struct {
 	TimeTaken float64     `json:"time_token"`
 	Status    ApiCode     `json:"status"`
 	StatusTxt string      `json:"status_txt"`
-	Results   interface{} `json:"result"`
+	Results   interface{} `json:"results"`
 	Links     string      `json:"links"`
 	Time      int64       `json:"time"`
 }
@@ -37,7 +37,7 @@ type ListPageData struct {
 	Limit      int64       `json:"limit"`
 	Offset     int64       `json:"offset"`
 	TotalCount int64       `json:"totalCount"`
-	Result     interface{} `json:"result"`
+	List       interface{} `json:"list"`
 }
 
 // ListPageDataFormat
@@ -63,7 +63,7 @@ func NewListPageData(limit int64, offset int64, totalCount int64, data interface
 		Limit:      limit,
 		Offset:     offset,
 		TotalCount: totalCount,
-		Result:     data,
+		List:       data,
 	}
 	//}
 }
