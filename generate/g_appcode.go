@@ -1025,8 +1025,7 @@ func Get{{modelName}}ById(id int) (v *{{modelName}}, err error) {
 
 // GetAll{{modelName}} retrieves all {{modelName}} matches certain condition. Returns empty list if
 // no records exist
-func GetAll{{modelName}}(query map[string]string, fields []string, sortby []string, offset int64,
-	limit int64) (ml []interface{}, err error) {
+func GetAll{{modelName}}(query map[string]string, fields []string, sortFields []string, offset int64, limit int64) (ml []interface{}, total int64, err error) {
 	o := orm.NewOrm()
 	qs := o.QueryTable(new({{modelName}}))
 	// query k=v
@@ -1040,7 +1039,13 @@ func GetAll{{modelName}}(query map[string]string, fields []string, sortby []stri
 		}
 	}
 	// order by:
-    qs = qs.OrderBy(sortby...)
+    qs = qs.OrderBy(sortFields...)
+	
+	//total
+	itemCount, err := qs.Count()
+	if err != nil || itemCount == 0 {
+		return ml, itemCount, err
+	}
 
 	var l []{{modelName}}
 	if _, err = qs.Limit(limit, offset).All(&l, fields...); err == nil {
@@ -1059,9 +1064,9 @@ func GetAll{{modelName}}(query map[string]string, fields []string, sortby []stri
 				ml = append(ml, m)
 			}
 		}
-		return ml, nil
+		return ml, itemCount, nil
 	}
-	return nil, err
+	return nil, itemCount, err
 }
 
 // Update{{modelName}} updates {{modelName}} by Id and returns error if
@@ -1180,11 +1185,12 @@ func (c *{{ctrlName}}Controller) GetAll() {
 		c.ServeJSON()
 	}
 
-	l, err := models.GetAllBpmWorkflows(query, fields, sortby, offset, limit)
+    l, itemCount, err := models.GetAll{{ctrlName}}(query, fields, sortby, offset, limit)
 	if err != nil {
 		c.Data["json"] = c.Resp(utils.ApiCode_ILLEGAL_ERROR, "not find", err.Error())
 	} else {
-		c.Data["json"] = c.Resp(utils.ApiCode_SUCC, "ok", l)
+        list := utils.NewListPageData(limit, offset, itemCount, l)
+        c.Data["json"] = c.Resp(utils.ApiCode_SUCC, "ok", list)
 	}
 	c.ServeJSON()
 }

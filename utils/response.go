@@ -31,3 +31,39 @@ type Resp struct {
 	Links     string      `json:"links"`
 	Time      int64       `json:"time"`
 }
+
+// ListPageDataFormat
+type ListPageData struct {
+	Limit      int64       `json:"limit"`
+	Offset     int64       `json:"offset"`
+	TotalCount int64       `json:"totalCount"`
+	Result     interface{} `json:"result"`
+}
+
+// ListPageDataFormat
+//type ListPageDataNull struct {
+//	Limit      int64      `json:"limit"`
+//	Offset     int64      `json:"offset"`
+//	TotalCount int64      `json:"totalCount"`
+//	Result     []struct{} `json:"result"`
+//}
+
+//生成分页数据结构
+func NewListPageData(limit int64, offset int64, totalCount int64, data interface{}) *ListPageData {
+
+	//if totalCount == 0 {
+	//	return &ListPageDataNull{
+	//		Limit:      limit,
+	//		Offset:     offset,
+	//		TotalCount: totalCount,
+	//		Result:     []struct{}{},
+	//	}
+	//} else {
+	return &ListPageData{
+		Limit:      limit,
+		Offset:     offset,
+		TotalCount: totalCount,
+		Result:     data,
+	}
+	//}
+}

@@ -46,7 +46,7 @@ func (c *Controller) GetPagePublicParams() (fields []string, sortby []string, qu
 	var orders []string
 	var querys = make(map[string]string)
 	var limits int64 = 10
-	var offsets int64
+	var offsets int64 = 0
 	var sortFields []string
 
 	// fields: col1,col2,entity.col3
