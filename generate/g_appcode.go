@@ -945,6 +945,7 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		var customFieldArr []string
 		var customRulesArr []string
 		var editfromFieldArr []string
+		var editSubmitItemsArr []string
 
 		for _, col := range tb.Columns {
 			fieldName := col.Name
@@ -963,22 +964,24 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 			selectOptionsArr = append(selectOptionsArr, tlpstr)
 
 			// Add index page list column
-			if !col.Tag.Pk {
+			if col.Tag.Pk != true {
 				tlpstr = strings.Replace(VueCreateFieldComponentTPL, "{{fieldName}}", fieldName, -1)
 				tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
 				createFromFieldArr = append(createFromFieldArr, tlpstr)
 			}
 
 			// Add index page customField
-			tlpstr = strings.Replace(VueCreateCustomFormComponentTPL, "{{fieldName}}", fieldName, -1)
-			tlpstr = strings.Replace(tlpstr, "{{fieldDefault}}", col.Tag.Default, -1)
-			customFieldArr = append(customFieldArr, tlpstr)
+			if col.Tag.Pk != true {
+				tlpstr = strings.Replace(VueCreateCustomFormComponentTPL, "{{fieldName}}", fieldName, -1)
+				tlpstr = strings.Replace(tlpstr, "{{fieldDefault}}", col.Tag.Default, -1)
+				customFieldArr = append(customFieldArr, tlpstr)
+			}
 
 			// Add index page customRules
-			if !col.Tag.Pk {
+			if col.Tag.Pk != true {
 				tlpstr = strings.Replace(VueCreateCustomRulesComponentTPL, "{{fieldName}}", fieldName, -1)
 				tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
-				if col.Tag.Null {
+				if col.Tag.Null != true {
 					tlpstr = strings.Replace(tlpstr, "{{required}}", "true", -1)
 				} else {
 					tlpstr = strings.Replace(tlpstr, "{{required}}", "false", -1)
@@ -995,12 +998,16 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 			// Add index page list column
 			tlpstr = strings.Replace(vueEditComponentFromItemTPL, "{{fieldName}}", fieldName, -1)
 			tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
-			if col.Tag.Pk {
+			if col.Tag.Pk == true || col.Name == "CreateAt" || col.Name == "CreateBy" || col.Name == "UpdateAt" || col.Name == "UpdateBy" {
 				tlpstr = strings.Replace(tlpstr, "{{disabled}}", "disabled", -1)
 			} else {
 				tlpstr = strings.Replace(tlpstr, "{{disabled}}", "", -1)
 			}
 			editfromFieldArr = append(editfromFieldArr, tlpstr)
+
+			// Add index page list column
+			tlpstr = strings.Replace(vueEditComponentSubmitItemTPL, "{{fieldName}}", fieldName, -1)
+			editSubmitItemsArr = append(editSubmitItemsArr, tlpstr)
 		}
 
 		listColumns := strings.Join(listColumnsArr, "")
@@ -1009,6 +1016,7 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		customField := strings.Join(customFieldArr, "")
 		customRules := strings.Join(customRulesArr, "")
 		editfromField := strings.Join(editfromFieldArr, "")
+		editSubmitItems := strings.Join(editSubmitItemsArr, "")
 
 		fileStr := strings.Replace(VueIndexTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
 		fileStr = strings.Replace(fileStr, "{{tbName}}", tb.Name, -1)
@@ -1082,16 +1090,48 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		fileStr = strings.Replace(vueEditComponentTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
 		fileStr = strings.Replace(fileStr, "{{fromField}}", editfromField, -1)
 		fileStr = strings.Replace(fileStr, "{{tbName}}", tb.Name, -1)
-		fileStr = strings.Replace(fileStr, "{{tbPk}}", tb.Pk, -1)
+		fileStr = strings.Replace(fileStr, "{{tbPk}}", strings.Title(tb.Pk), -1)
 		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
 		fileStr = strings.Replace(fileStr, "{{customField}}", customField, -1)
 		fileStr = strings.Replace(fileStr, "{{customRules}}", customRules, -1)
+		fileStr = strings.Replace(fileStr, "{{editSubmitItems}}", editSubmitItems, -1)
+
 		if _, err := f.WriteString(fileStr); err != nil {
 			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpathIndex, err)
 		}
 		utils.CloseFile(f)
 		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpathIndex, "\x1b[0m")
 		utils.FormatSourceCode(fpathIndex)
+
+		//列显示设置组件
+		fpathIndex = path.Join(cBase, "ColSettingComponent.vue")
+		if utils.IsExist(fpathIndex) {
+			beeLogger.Log.Warnf("'%s' already exists. Do you want to overwrite it? [Yes|No] ", fpathIndex)
+			if utils.AskForConfirmation() {
+				f, err = os.OpenFile(fpathIndex, os.O_RDWR|os.O_TRUNC, 0666)
+				if err != nil {
+					beeLogger.Log.Warnf("%s", err)
+					continue
+				}
+			} else {
+				beeLogger.Log.Warnf("Skipped create file '%s'", fpathIndex)
+				continue
+			}
+		} else {
+			f, err = os.OpenFile(fpathIndex, os.O_CREATE|os.O_RDWR, 0666)
+			if err != nil {
+				beeLogger.Log.Warnf("%s", err)
+				continue
+			}
+		}
+		fileStr = strings.Replace(vueColSettingComponentTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
+		if _, err := f.WriteString(fileStr); err != nil {
+			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpathIndex, err)
+		}
+		utils.CloseFile(f)
+		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpathIndex, "\x1b[0m")
+		utils.FormatSourceCode(fpathIndex)
+
 	}
 }
 
@@ -1486,6 +1526,7 @@ func init() {
                 <v-icon type="plus"></v-icon>
                 &nbsp;&nbsp;添加
             </v-button>
+            <span  @click="settingCol()" class="pull-right"><v-icon type="setting" class="colsetting"></v-icon></span>
         </div>
         <div class="table goods">
             <v-data-table :data='loadData' :columns='columns' ref="xtable" stripe bordered >
@@ -1509,7 +1550,7 @@ func init() {
         </div>
         <create-item @refreshList="refreshTable" ref="createRef"></create-item>
         <edit-item @refreshList="refreshTable" ref="editRef"></edit-item>
-
+        <col-setting :columnsSetting="columnsBak" @setCols="setColomns" ref="colSettingRef"></col-setting>
     </div>
 </template>
 
@@ -1518,6 +1559,7 @@ func init() {
     import { formatDate } from '../../common/date'
     import createVue from './CreateComponent.vue'
     import editVue from './EditComponent.vue'
+    import colSetting from './ColSettingComponent.vue'
 
     const IndexApi = hostName+"v1/{{tbName}}";
     const DeleteAPI = hostName+"v1/{{tbName}}";
@@ -1538,10 +1580,10 @@ func init() {
                 checkNo    : 1,
                 checkStatus: '',
                 //商品列表头部
-                columns    : [
-                    {{listColumn}}
-                    {title: "operate", field: 'action'},
+                columns    : [{{listColumn}}
+                    {title: "operate", field: 'action', show: true},
                 ],
+                columnsBak : null,
             }
         },
         created: function () {
@@ -1552,7 +1594,8 @@ func init() {
         },
         components:{
             'create-item': createVue,
-            'edit-item': editVue
+            'edit-item': editVue,
+            'col-setting': colSetting,
         },
         methods: {
             refreshTable:function () {
@@ -1572,12 +1615,8 @@ func init() {
                 }
 
                 return this.$http.get(IndexApi,{ params }).then(resp =>{
-
                     if (resp.data.status == 1){
-
                         var result = resp.data.results[0];
-                        console.log("result", result);
-
                         let list = result.list? result.list : [];
 
                         //for (let i in list) {
@@ -1630,7 +1669,16 @@ func init() {
             format:function(time){
                 let date = new Date(parseInt(time));
                 return formatDate(date,'yyyy-MM-dd hh:mm:ss');
-            }
+            },
+            settingCol:function(){
+                if(!this.columnsBak){
+                    this.columnsBak = this.columns.concat();
+                }
+                this.$refs.colSettingRef.show = true;
+            },
+            setColomns:function(cols){
+                this.columns = cols;
+            },
         }
     }
 </script>
@@ -1704,11 +1752,15 @@ func init() {
         left: 1px;
         z-index: 11;
     }
+    .colsetting{
+        font-size: 20px;
+        padding-top: 15px;
+        padding-right: 10px;
+    }
 </style>
 `
 	VueIndexListColumnTPL = `
-                    {title: "{{fieldComment}}", field: '{{fieldName}}'},
-`
+                    {title: "{{fieldComment}}", field: '{{fieldName}}', show: true},`
 	VueIndexSelectOptionTPL = `
                     { value: '{{fieldName}}', label: '{{fieldComment}}' },`
 	VueCreateComponentTPL = `<template>
@@ -1734,12 +1786,10 @@ func init() {
   export default {
       data() {
           return {
-              customForm: {
-				  {{customField}}
+              customForm: {{{customField}}
               },
               show: false,
-              customRules:{
-                  {{customRules}}
+              customRules:{{{customRules}}
               },
               labelCol: {
                   span: 6
@@ -1810,7 +1860,7 @@ func init() {
 
 <script>
   import {hostName} from '../../config/api'
-  const UpdateAPI = hostName + "v1/{{tbName}}/{{tbPk}}";
+  const UpdateAPI = hostName + "v1/{{tbName}}";
 
   export default {
       data() {
@@ -1819,11 +1869,9 @@ func init() {
               show      : false,
               loading   : false,
               updateMode: false,
-              customForm: {
-                  {{customField}}
+              customForm: {{{customField}}
               },
-              customRules:{
-                  {{customRules}}
+              customRules:{{{customRules}}
               },
               labelCol: {
                   span: 6
@@ -1837,13 +1885,11 @@ func init() {
           submitForm: function (formName) {
               this.$refs[formName].validate((valid) => {
                   if(valid) {
-                      let params = {
-                          tagId  : this.customForm.tagid,
-                          tagName: this.customForm.tagname,
+                      let params = {{{editSubmitItems}}
                       };
 
                       this.loading     = true;
-                      this.$http.put(UpdateAPI, this.$qs.stringify(params)).then(resp => {
+                      this.$http.put(UpdateAPI + "/" + this.customForm.{{tbPk}}, this.$qs.stringify(params)).then(resp => {
                           this.loading = false;
                           if (resp.data.status == 1) {
                               this.$notification.success({
@@ -1893,5 +1939,63 @@ func init() {
                 <v-input v-if="updateMode"  v-model="customForm.{{fieldName}}" size="large" {{disabled}}></v-input>
                 <span v-if="!updateMode"  class="ant-form-text">{{customForm.{{fieldName}}}}</span>
             </v-form-item>
+`
+	vueEditComponentSubmitItemTPL = `
+                          {{fieldName}}  : this.customForm.{{fieldName}},`
+	vueColSettingComponentTPL = `
+<template>
+    <v-modal class="model" title="显示" :width='220' :visible="show" @cancel="ruleCancel">
+        <v-form direction="horizontal">
+            <ul>
+                <template v-for="items in columnsSetting">
+                   <li> <v-checkbox v-model="items.show" :true-value="true" :false-value="false">{{items.title}}</v-checkbox></li>
+                </template>
+            </ul>
+
+
+            <div class="layer-button">
+                <v-button @click="ruleCancel">完成</v-button>
+            </div>
+        </v-form>
+    </v-modal>
+</template>
+
+<script>
+  export default {
+      data() {
+          return {
+              show: false,
+              labelCol: {
+                  span: 6
+              },
+              wrapperCol: {
+                  span: 14
+              }
+          }
+      },
+      props: ['columnsSetting'],
+      methods: {
+          //取消
+          ruleCancel: function () {
+              var cols = [];
+              for (var i=0;i<this.columnsSetting.length;i++)
+              {
+                  if(this.columnsSetting[i].show){
+                      cols.push(this.columnsSetting[i]);
+                  }
+              }
+              this.$emit('setCols', cols);
+              this.show = false;
+          }
+      }
+  }
+</script>
+
+<style scoped>
+    li {
+        margin-bottom: 5px;
+    }
+</style>
+
 `
 )
