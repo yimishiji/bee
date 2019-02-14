@@ -938,10 +938,84 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 				continue
 			}
 		}
+
+		var listColumnsArr []string
+		var selectOptionsArr []string
+		var createFromFieldArr []string
+		var customFieldArr []string
+		var customRulesArr []string
+		var editfromFieldArr []string
+
+		for _, col := range tb.Columns {
+			fieldName := col.Name
+			fieldComment := col.Tag.Comment
+			if fieldComment == "" {
+				fieldComment = col.Name
+			}
+			// Add index page list column
+			tlpstr := strings.Replace(VueIndexListColumnTPL, "{{fieldName}}", fieldName, -1)
+			tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
+			listColumnsArr = append(listColumnsArr, tlpstr)
+
+			// Add index page select column
+			tlpstr = strings.Replace(VueIndexSelectOptionTPL, "{{fieldName}}", fieldName, -1)
+			tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
+			selectOptionsArr = append(selectOptionsArr, tlpstr)
+
+			// Add index page list column
+			if !col.Tag.Pk {
+				tlpstr = strings.Replace(VueCreateFieldComponentTPL, "{{fieldName}}", fieldName, -1)
+				tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
+				createFromFieldArr = append(createFromFieldArr, tlpstr)
+			}
+
+			// Add index page customField
+			tlpstr = strings.Replace(VueCreateCustomFormComponentTPL, "{{fieldName}}", fieldName, -1)
+			tlpstr = strings.Replace(tlpstr, "{{fieldDefault}}", col.Tag.Default, -1)
+			customFieldArr = append(customFieldArr, tlpstr)
+
+			// Add index page customRules
+			if !col.Tag.Pk {
+				tlpstr = strings.Replace(VueCreateCustomRulesComponentTPL, "{{fieldName}}", fieldName, -1)
+				tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
+				if col.Tag.Null {
+					tlpstr = strings.Replace(tlpstr, "{{required}}", "true", -1)
+				} else {
+					tlpstr = strings.Replace(tlpstr, "{{required}}", "false", -1)
+				}
+				if col.Tag.Size != "" {
+					tlpstr = strings.Replace(tlpstr, "{{length}}", col.Tag.Size, -1)
+				} else {
+					tlpstr = strings.Replace(tlpstr, "length: {{length}},", "", -1)
+				}
+				tlpstr = strings.Replace(tlpstr, "{{type}}", col.Tag.Type, -1)
+				customRulesArr = append(customRulesArr, tlpstr)
+			}
+
+			// Add index page list column
+			tlpstr = strings.Replace(vueEditComponentFromItemTPL, "{{fieldName}}", fieldName, -1)
+			tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
+			if col.Tag.Pk {
+				tlpstr = strings.Replace(tlpstr, "{{disabled}}", "disabled", -1)
+			} else {
+				tlpstr = strings.Replace(tlpstr, "{{disabled}}", "", -1)
+			}
+			editfromFieldArr = append(editfromFieldArr, tlpstr)
+		}
+
+		listColumns := strings.Join(listColumnsArr, "")
+		selectOptions := strings.Join(selectOptionsArr, "")
+		createFromField := strings.Join(createFromFieldArr, "")
+		customField := strings.Join(customFieldArr, "")
+		customRules := strings.Join(customRulesArr, "")
+		editfromField := strings.Join(editfromFieldArr, "")
+
 		fileStr := strings.Replace(VueIndexTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
 		fileStr = strings.Replace(fileStr, "{{tbName}}", tb.Name, -1)
 		fileStr = strings.Replace(fileStr, "{{tbPk}}", tb.Pk, -1)
 		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
+		fileStr = strings.Replace(fileStr, "{{listColumn}}", listColumns, -1)
+		fileStr = strings.Replace(fileStr, "{{selectOptions}}", selectOptions, -1)
 		if _, err := f.WriteString(fileStr); err != nil {
 			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpathIndex, err)
 		}
@@ -949,7 +1023,7 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpathIndex, "\x1b[0m")
 		utils.FormatSourceCode(fpathIndex)
 
-		//创建组件
+		//添加组件
 		fpathIndex = path.Join(cBase, "CreateComponent.vue")
 		if utils.IsExist(fpathIndex) {
 			beeLogger.Log.Warnf("'%s' already exists. Do you want to overwrite it? [Yes|No] ", fpathIndex)
@@ -974,6 +1048,9 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		fileStr = strings.Replace(fileStr, "{{tbName}}", tb.Name, -1)
 		fileStr = strings.Replace(fileStr, "{{tbPk}}", tb.Pk, -1)
 		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
+		fileStr = strings.Replace(fileStr, "{{fromField}}", createFromField, -1)
+		fileStr = strings.Replace(fileStr, "{{customField}}", customField, -1)
+		fileStr = strings.Replace(fileStr, "{{customRules}}", customRules, -1)
 		if _, err := f.WriteString(fileStr); err != nil {
 			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpathIndex, err)
 		}
@@ -1003,9 +1080,12 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 			}
 		}
 		fileStr = strings.Replace(vueEditComponentTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
+		fileStr = strings.Replace(fileStr, "{{fromField}}", editfromField, -1)
 		fileStr = strings.Replace(fileStr, "{{tbName}}", tb.Name, -1)
 		fileStr = strings.Replace(fileStr, "{{tbPk}}", tb.Pk, -1)
 		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
+		fileStr = strings.Replace(fileStr, "{{customField}}", customField, -1)
+		fileStr = strings.Replace(fileStr, "{{customRules}}", customRules, -1)
 		if _, err := f.WriteString(fileStr); err != nil {
 			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpathIndex, err)
 		}
@@ -1447,9 +1527,7 @@ func init() {
             return {
                 //下拉搜索选择
                 options    : [
-                    { value: 'title', label: '标题' },
-                    { value: 'platform', label: '平台' },
-                    { value: 'description', label: '简述' },
+                    {{selectOptions}}
                 ],
                 //下拉选中
                 searchType : '',
@@ -1461,13 +1539,8 @@ func init() {
                 checkStatus: '',
                 //商品列表头部
                 columns    : [
-                    {title: "Id", field: 'Id'},
-                    {title: "Type", field: 'Type'},
-                    {title: "CreatedAt", field: 'CreatedAt'},
-                    {title: "UpdatedAt", field: 'UpdatedAt'},
-                    {title: "Name", field: 'Name'},
-                    {title: "Description", field: 'Description'},
-                    {title: "Operate", field: "action"},
+                    {{listColumn}}
+                    {title: "operate", field: 'action'},
                 ],
             }
         },
@@ -1495,9 +1568,7 @@ func init() {
                 };
 
                 if(this.searchType){
-                    params[ "query["+this.searchType+"]"] = this.searchText;
-                }else if(this.searchText){
-                    params[ "query[title]"] = this.searchText;
+                    params[ "query"] = this.searchType+":"+this.searchText.trim();
                 }
 
                 return this.$http.get(IndexApi,{ params }).then(resp =>{
@@ -1507,7 +1578,7 @@ func init() {
                         var result = resp.data.results[0];
                         console.log("result", result);
 
-                        let list = result.list;
+                        let list = result.list? result.list : [];
 
                         //for (let i in list) {
                         //    list[i].createAt = this.format(list[i].createAt);
@@ -1635,21 +1706,15 @@ func init() {
     }
 </style>
 `
+	VueIndexListColumnTPL = `
+                    {title: "{{fieldComment}}", field: '{{fieldName}}'},
+`
+	VueIndexSelectOptionTPL = `
+                    { value: '{{fieldName}}', label: '{{fieldComment}}' },`
 	VueCreateComponentTPL = `<template>
-    <v-modal class="model" title="创建消息" :width='540' :visible="show" @cancel="ruleCancel">
+    <v-modal class="model" title="{{tbName}}" :width='540' :visible="show" @cancel="ruleCancel">
         <v-form direction="horizontal" :model="customForm" :rules="customRules" ref="customRuleForm"  @keyup.enter.native="submitForm('customRuleForm')">
-            <v-form-item label="接收的员工id" :label-col="labelCol" :wrapper-col="wrapperCol" prop="touser" has-feedback>
-                <v-input v-model="customForm.touser" size="large"></v-input>
-            </v-form-item>
-            <v-form-item label="接收的员工tagid" :label-col="labelCol" :wrapper-col="wrapperCol" prop="totag" has-feedback>
-                <v-input v-model="customForm.totag" size="large"></v-input>
-            </v-form-item>
-            <v-form-item label="消息标题" :label-col="labelCol" :wrapper-col="wrapperCol" prop="title" has-feedback>
-                <v-input v-model="customForm.title" size="large"></v-input>
-            </v-form-item>
-            <v-form-item label="消息描述" :label-col="labelCol" :wrapper-col="wrapperCol" prop="description" has-feedback>
-                <v-input  type="textarea" v-model="customForm.description" size="large"></v-input>
-            </v-form-item>
+            {{fromField}}
 
             <div class="layer-button">
                 <v-button type="primary" @click="submitForm" :loading="this.$store.state.loading">{{
@@ -1670,16 +1735,11 @@ func init() {
       data() {
           return {
               customForm: {
-                  touser     : '',
-                  totag      : '',
-                  title      : '',
-                  description: ''
+				  {{customField}}
               },
               show: false,
               customRules:{
-                  title:[
-                      {required: true, message: '请输入消息标题',trigger: 'blur'}
-                  ]
+                  {{customRules}}
               },
               labelCol: {
                   span: 6
@@ -1724,59 +1784,22 @@ func init() {
     }
 </style>
 `
+	VueCreateFieldComponentTPL = ` 
+			<v-form-item label="{{fieldComment}}" :label-col="labelCol" :wrapper-col="wrapperCol" prop="{{fieldName}}" has-feedback>
+                <v-input v-model="customForm.{{fieldName}}" size="large"></v-input>
+            </v-form-item>
+`
+	VueCreateCustomFormComponentTPL = `
+                  {{fieldName}}  : '{{fieldDefault}}',`
+	VueCreateCustomRulesComponentTPL = `
+                  {{fieldName}}:[
+                      {required: {{required}}, message: '请输入{{fieldComment}}', trigger: 'blur', length: {{length}}, type: "{{type}}"}
+                  ],`
+
 	vueEditComponentTPL = `<template>
     <v-modal class="add-user"  :title=" updateMode ? '编辑' : '详情' " :width='640' :visible="show" @cancel="ruleCancel">
         <v-form direction="horizontal"  v-bind:class="{ 'view-mode': !updateMode }" :model="customForm" :rules="customRules" ref="customRuleForm" @keyup.enter.native="submitForm('customRuleForm')">
-            <v-form-item label="消息id" :label-col="labelCol" :wrapper-col="wrapperCol">
-                <span class="ant-form-text">{{customForm._id}}</span>
-            </v-form-item>
-            <v-form-item label="员工标签" :label-col="labelCol" :wrapper-col="wrapperCol" prop="totag" has-feedback>
-                <v-input v-if="updateMode"  v-model="customForm.totag" size="large"></v-input>
-                <span v-if="!updateMode"  class="ant-form-text">{{customForm.totag}}</span>
-            </v-form-item>
-            <v-form-item label="员工id" :label-col="labelCol" :wrapper-col="wrapperCol" prop="touser" has-feedback>
-                <v-input v-if="updateMode"  v-model="customForm.touser" size="large"></v-input>
-                <span v-if="!updateMode"  class="ant-form-text">{{customForm.touser}}</span>
-            </v-form-item>
-            <v-form-item label="部门id" :label-col="labelCol" :wrapper-col="wrapperCol" prop="toparty" has-feedback>
-                <v-input v-if="updateMode"  v-model="customForm.toparty" size="large"></v-input>
-                <span v-if="!updateMode"  class="ant-form-text">{{customForm.toparty}}</span>
-            </v-form-item>
-            <v-form-item label="消息标题" :label-col="labelCol" :wrapper-col="wrapperCol" prop="title" has-feedback>
-                <v-input v-if="updateMode"  v-model="customForm.title" size="large"></v-input>
-                <span v-if="!updateMode"  class="ant-form-text">{{customForm.title}}</span>
-            </v-form-item>
-            <v-form-item label="消息简述" :label-col="labelCol" :wrapper-col="wrapperCol" prop="description" has-feedback>
-                <v-input v-if="updateMode"  v-model="customForm.description" size="large"></v-input>
-                <span v-if="!updateMode"  class="ant-form-text">{{customForm.description}}</span>
-            </v-form-item>
-            <v-form-item label="消息详情url" :label-col="labelCol" :wrapper-col="wrapperCol" prop="url" has-feedback>
-                <v-input v-if="updateMode"  v-model="customForm.url" size="large"></v-input>
-                <span v-if="!updateMode"  class="ant-form-text">{{customForm.url}}</span>
-            </v-form-item>
-            <v-form-item label="消息图片" :label-col="labelCol" :wrapper-col="wrapperCol" prop="picurl" has-feedback>
-                <v-input v-if="updateMode"  v-model="customForm.picurl" size="large"></v-input>
-                <span v-if="!updateMode"  class="ant-form-text">{{customForm.picurl}}</span>
-            </v-form-item>
-            <v-form-item label="内容" :label-col="labelCol" :wrapper-col="wrapperCol" prop="content" has-feedback>
-                <v-input v-if="updateMode"  v-model="customForm.content" size="large"></v-input>
-                <span v-if="!updateMode"  class="ant-form-text">{{customForm.content}}</span>
-            </v-form-item>
-            <v-form-item label="路径跟踪" :label-col="labelCol" :wrapper-col="wrapperCol" prop="backtrace" has-feedback>
-                <v-input v-if="updateMode"  v-model="customForm.backtrace" size="large"></v-input>
-                <span v-if="!updateMode"  class="ant-form-text">{{customForm.backtrace}}</span>
-            </v-form-item>
-            <v-form-item label="送达状态" :label-col="labelCol" :wrapper-col="wrapperCol" prop="send_success" has-feedback>
-                <v-input v-if="updateMode"  v-model="customForm.send_success" size="large"></v-input>
-                <span v-if="!updateMode"  class="ant-form-text">{{customForm.send_success}}</span>
-            </v-form-item>
-            <v-form-item label="企业微信接口响应" :label-col="labelCol" :wrapper-col="wrapperCol" prop="send_response" has-feedback>
-                <v-input v-if="updateMode"  v-model="customForm.send_response" size="large"></v-input>
-                <span v-if="!updateMode"  class="ant-form-text">{{customForm.send_response}}</span>
-            </v-form-item>
-            <v-form-item label="创建时间" :label-col="labelCol" :wrapper-col="wrapperCol" prop="tagname" has-feedback>
-                <span class="ant-form-text">{{customForm.createAt}}</span>
-            </v-form-item>
+            {{fromField}}
             <div class="layer-button">
                 <v-button v-if="updateMode" type="primary" style="margin-right:10px" @click.prevent="submitForm('customRuleForm')" :loading="loading">{{ loading ? "正在修改中" : "马上修改" }}</v-button>
                 <v-button type="ghost" @click.prevent="ruleCancel()">{{ updateMode ? "取消" : "关闭" }}</v-button>
@@ -1797,26 +1820,10 @@ func init() {
               loading   : false,
               updateMode: false,
               customForm: {
-                  backtrace: null,
-                  btntxt:  null,
-                  content:  null,
-                  createAt:  null,
-                  description:  null,
-                  picurl:  null,
-                  platform:  null,
-                  send_response: null,
-                  send_success: true,
-                  title:  null,
-                  toparty:  null,
-                  totag:  null,
-                  touser: null,
-                  url: null,
-                  _id:  null
+                  {{customField}}
               },
               customRules:{
-                  title:[
-                      {required: true, message: '请输入标签名称',trigger: 'blur'}
-                  ]
+                  {{customRules}}
               },
               labelCol: {
                   span: 6
@@ -1880,5 +1887,11 @@ func init() {
         display:none;
     }
 </style>
+`
+	vueEditComponentFromItemTPL = `
+            <v-form-item label="{{fieldComment}}" :label-col="labelCol" :wrapper-col="wrapperCol" prop="title" has-feedback>
+                <v-input v-if="updateMode"  v-model="customForm.{{fieldName}}" size="large" {{disabled}}></v-input>
+                <span v-if="!updateMode"  class="ant-form-text">{{customForm.{{fieldName}}}}</span>
+            </v-form-item>
 `
 )
