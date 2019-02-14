@@ -1567,7 +1567,7 @@ func init() {
                     //'query':{}
                 };
 
-                if(this.searchType){
+                if(this.searchType && this.searchText.trim()){
                     params[ "query"] = this.searchType+":"+this.searchText.trim();
                 }
 
