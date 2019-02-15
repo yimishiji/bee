@@ -233,7 +233,6 @@
 		},
 		{
 			"checksumSHA1": "Y7nctMxT58lRM78VtElPerhcnEs=",
-			"origin": "github.com/yimishiji/bee/vendor/golang.org/x/sys/windows",
 			"path": "golang.org/x/sys/windows",
 			"revision": "fa43e7bc11baaae89f3f902b2b4d832b68234844",
 			"revisionTime": "2018-10-11T14:35:51Z"

@@ -972,6 +972,7 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		}
 
 		var listColumnsArr []string
+		var listColumnShowArr []string
 		var selectOptionsArr []string
 		var createFromFieldArr []string
 		var customFieldCreateArr []string
@@ -981,6 +982,7 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		var editfromFieldArr []string
 		var editSubmitItemsArr []string
 
+		var index int32 = 0
 		for _, col := range tb.Columns {
 			fieldName := col.Name
 			fieldComment := col.Tag.Comment
@@ -990,6 +992,11 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 			// Add index page list column
 			tlpstr := strings.Replace(VueIndexListColumnTPL, "{{fieldName}}", fieldName, -1)
 			tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
+			if index > 6 {
+				tlpstr = strings.Replace(tlpstr, "show: true", "show: false", -1)
+			} else {
+				listColumnShowArr = append(listColumnShowArr, tlpstr)
+			}
 			listColumnsArr = append(listColumnsArr, tlpstr)
 
 			// Add index page select column
@@ -1051,9 +1058,11 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 			// Add index page list column
 			tlpstr = strings.Replace(vueEditComponentSubmitItemTPL, "{{fieldName}}", fieldName, -1)
 			editSubmitItemsArr = append(editSubmitItemsArr, tlpstr)
+			index++
 		}
 
 		listColumns := strings.Join(listColumnsArr, "")
+		listColumnShow := strings.Join(listColumnShowArr, "")
 		selectOptions := strings.Join(selectOptionsArr, "")
 		createFromField := strings.Join(createFromFieldArr, "")
 		customFieldCreate := strings.Join(customFieldCreateArr, "")
@@ -1068,6 +1077,7 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		fileStr = strings.Replace(fileStr, "{{tbPk}}", tb.Pk, -1)
 		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
 		fileStr = strings.Replace(fileStr, "{{listColumn}}", listColumns, -1)
+		fileStr = strings.Replace(fileStr, "{{listColumnShow}}", listColumnShow, -1)
 		fileStr = strings.Replace(fileStr, "{{selectOptions}}", selectOptions, -1)
 		if _, err := f.WriteString(fileStr); err != nil {
 			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpathIndex, err)
@@ -1599,7 +1609,7 @@ func init() {
         </div>
         <create-item @refreshList="refreshTable" ref="createRef"></create-item>
         <edit-item @refreshList="refreshTable" ref="editRef"></edit-item>
-        <col-setting :columnsSetting="columnsBak" @setCols="setColomns" ref="colSettingRef"></col-setting>
+        <col-setting :columnsSetting="columnsSetting" @setCols="setColomns" ref="colSettingRef"></col-setting>
     </div>
 </template>
 
@@ -1629,10 +1639,12 @@ func init() {
                 checkNo    : 1,
                 checkStatus: '',
                 //商品列表头部
-                columns    : [{{listColumn}}
+                columns    : [{{listColumnShow}}
                     {title: "operate", field: 'action', show: true},
                 ],
-                columnsBak : null,
+                columnsSetting : [{{listColumn}}
+                    {title: "operate", field: 'action', show: true},
+                ],
             }
         },
         created: function () {
@@ -1720,9 +1732,6 @@ func init() {
                 return formatDate(date,'yyyy-MM-dd hh:mm:ss');
             },
             settingCol:function(){
-                if(!this.columnsBak){
-                    this.columnsBak = this.columns.concat();
-                }
                 this.$refs.colSettingRef.show = true;
             },
             setColomns:function(cols){
@@ -1870,6 +1879,9 @@ func init() {
           },
           //取消
           ruleCancel: function () {
+              for(var i in this.customForm) {
+                  this.customForm[i] = '';
+              }
               this.show = false;
           }
       }
@@ -1964,7 +1976,6 @@ func init() {
           ruleCancel: function () {
               this.show = false;
               this.loading = false;
-              this.id = false;
               this.customForm = {};
           }
       }
