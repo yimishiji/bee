@@ -843,8 +843,40 @@ func writeControllerFiles(tables []*Table, cPath string, pkgPath string) {
 				continue
 			}
 		}
+
+		var createAutoArr []string
+		var updateAutoArr []string
+		for _, col := range tb.Columns {
+			if col.Name == "CreatedAt" {
+				if col.Tag.Type == "datetime" {
+					createAutoArr = append(createAutoArr, "v.CreatedAt = time.Now()\n")
+				} else if col.Tag.Type == "int" {
+					createAutoArr = append(createAutoArr, "v.CreatedAt = time.Now().Unix()\n")
+				}
+			}
+			if col.Name == "CreatedBy" {
+				createAutoArr = append(createAutoArr, "//v.CreatedBy = utils.User.getId()\n")
+			}
+			if col.Name == "UpdatedAt" {
+				if col.Tag.Type == "datetime" {
+					updateAutoArr = append(updateAutoArr, "v.UpdatedAt = time.Now()\n")
+					createAutoArr = append(createAutoArr, "v.UpdatedAt = time.Now()\n")
+				} else if col.Tag.Type == "int" {
+					updateAutoArr = append(updateAutoArr, "v.UpdatedAt = time.Now().Unix()\n")
+					createAutoArr = append(createAutoArr, "v.UpdatedAt = time.Now().Unix()\n")
+				}
+			}
+			if col.Name == "UpdatedBy" {
+				updateAutoArr = append(updateAutoArr, "//v.UpdatedBy = utils.User.getId()\n")
+			}
+		}
+		createAuto := strings.Join(createAutoArr, "")
+		updateAuto := strings.Join(updateAutoArr, "")
+
 		fileStr := strings.Replace(CtrlTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
 		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
+		fileStr = strings.Replace(fileStr, "{{createAuto}}", createAuto, -1)
+		fileStr = strings.Replace(fileStr, "{{updateAuto}}", updateAuto, -1)
 		if _, err := f.WriteString(fileStr); err != nil {
 			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpath, err)
 		}
@@ -875,18 +907,18 @@ func writeRouterFile(tables []*Table, rPath string, pkgPath string) {
 	var f *os.File
 	var err error
 	if utils.IsExist(fpath) {
-		beeLogger.Log.Warnf("'%s' already exists. Do you want to overwrite it? [Yes|No] ", fpath)
-		if utils.AskForConfirmation() {
-			f, err = os.OpenFile(fpath, os.O_RDWR|os.O_TRUNC, 0666)
-			if err != nil {
-				beeLogger.Log.Warnf("%s", err)
-				return
-			}
-		} else {
-			beeLogger.Log.Warnf("Skipped create file '%s'", fpath)
-			beeLogger.Log.Warnf("add to file this route \n '%s'\n", strings.Join(nameSpaces, ""))
-			return
-		}
+		//beeLogger.Log.Warnf("'%s' already exists. Do you want to overwrite it? [Yes|No] ", fpath)
+		//if utils.AskForConfirmation() {
+		//	f, err = os.OpenFile(fpath, os.O_RDWR|os.O_TRUNC, 0666)
+		//	if err != nil {
+		//		beeLogger.Log.Warnf("%s", err)
+		//		return
+		//	}
+		//} else {
+		beeLogger.Log.Warnf("Skipped create file '%s'", fpath)
+		beeLogger.Log.Warnf("add to file this route \n '%s'\n", strings.Join(nameSpaces, ""))
+		return
+		//}
 	} else {
 		f, err = os.OpenFile(fpath, os.O_CREATE|os.O_RDWR, 0666)
 		if err != nil {
@@ -942,8 +974,10 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		var listColumnsArr []string
 		var selectOptionsArr []string
 		var createFromFieldArr []string
-		var customFieldArr []string
-		var customRulesArr []string
+		var customFieldCreateArr []string
+		var customFieldEditArr []string
+		var customRulesCreateArr []string
+		var customRulesEditArr []string
 		var editfromFieldArr []string
 		var editSubmitItemsArr []string
 
@@ -963,22 +997,23 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 			tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
 			selectOptionsArr = append(selectOptionsArr, tlpstr)
 
+			col.Tag.Pk = col.Name == utils.CamelCase(tb.Pk)
+
 			// Add index page list column
-			if col.Tag.Pk != true {
+			if col.Tag.Pk != true && col.Name != "CreatedAt" && col.Name != "CreatedBy" && col.Name != "UpdatedAt" && col.Name != "UpdatedBy" {
 				tlpstr = strings.Replace(VueCreateFieldComponentTPL, "{{fieldName}}", fieldName, -1)
 				tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
 				createFromFieldArr = append(createFromFieldArr, tlpstr)
 			}
 
-			// Add index page customField
 			if col.Tag.Pk != true {
-				tlpstr = strings.Replace(VueCreateCustomFormComponentTPL, "{{fieldName}}", fieldName, -1)
-				tlpstr = strings.Replace(tlpstr, "{{fieldDefault}}", col.Tag.Default, -1)
-				customFieldArr = append(customFieldArr, tlpstr)
-			}
 
-			// Add index page customRules
-			if col.Tag.Pk != true {
+				// Add index page customFieldEdit
+				tlpstrField := strings.Replace(VueCreateCustomFormComponentTPL, "{{fieldName}}", fieldName, -1)
+				tlpstrField = strings.Replace(tlpstrField, "{{fieldDefault}}", col.Tag.Default, -1)
+				customFieldEditArr = append(customFieldEditArr, tlpstrField)
+
+				// Add index page customRules
 				tlpstr = strings.Replace(VueCreateCustomRulesComponentTPL, "{{fieldName}}", fieldName, -1)
 				tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
 				if col.Tag.Null != true {
@@ -992,13 +1027,21 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 					tlpstr = strings.Replace(tlpstr, "length: {{length}},", "", -1)
 				}
 				tlpstr = strings.Replace(tlpstr, "{{type}}", col.Tag.Type, -1)
-				customRulesArr = append(customRulesArr, tlpstr)
+				customRulesEditArr = append(customRulesEditArr, tlpstr)
+
+				if col.Name != "CreatedAt" && col.Name != "CreatedBy" && col.Name != "UpdatedAt" && col.Name != "UpdatedBy" {
+					// Add index page customFieldCreate
+					customFieldCreateArr = append(customFieldCreateArr, tlpstrField)
+
+					// Add index page customRulesCreate
+					customRulesCreateArr = append(customRulesCreateArr, tlpstr)
+				}
 			}
 
 			// Add index page list column
 			tlpstr = strings.Replace(vueEditComponentFromItemTPL, "{{fieldName}}", fieldName, -1)
 			tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
-			if col.Tag.Pk == true || col.Name == "CreateAt" || col.Name == "CreateBy" || col.Name == "UpdateAt" || col.Name == "UpdateBy" {
+			if col.Tag.Pk == true || col.Name == "CreatedAt" || col.Name == "CreatedBy" || col.Name == "UpdatedAt" || col.Name == "UpdatedBy" {
 				tlpstr = strings.Replace(tlpstr, "{{disabled}}", "disabled", -1)
 			} else {
 				tlpstr = strings.Replace(tlpstr, "{{disabled}}", "", -1)
@@ -1013,8 +1056,10 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		listColumns := strings.Join(listColumnsArr, "")
 		selectOptions := strings.Join(selectOptionsArr, "")
 		createFromField := strings.Join(createFromFieldArr, "")
-		customField := strings.Join(customFieldArr, "")
-		customRules := strings.Join(customRulesArr, "")
+		customFieldCreate := strings.Join(customFieldCreateArr, "")
+		customFieldEdit := strings.Join(customFieldEditArr, "")
+		customRulesCreate := strings.Join(customRulesCreateArr, "")
+		customRulesEdit := strings.Join(customRulesEditArr, "")
 		editfromField := strings.Join(editfromFieldArr, "")
 		editSubmitItems := strings.Join(editSubmitItemsArr, "")
 
@@ -1057,8 +1102,8 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		fileStr = strings.Replace(fileStr, "{{tbPk}}", tb.Pk, -1)
 		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
 		fileStr = strings.Replace(fileStr, "{{fromField}}", createFromField, -1)
-		fileStr = strings.Replace(fileStr, "{{customField}}", customField, -1)
-		fileStr = strings.Replace(fileStr, "{{customRules}}", customRules, -1)
+		fileStr = strings.Replace(fileStr, "{{customField}}", customFieldCreate, -1)
+		fileStr = strings.Replace(fileStr, "{{customRules}}", customRulesCreate, -1)
 		if _, err := f.WriteString(fileStr); err != nil {
 			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpathIndex, err)
 		}
@@ -1092,8 +1137,8 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		fileStr = strings.Replace(fileStr, "{{tbName}}", tb.Name, -1)
 		fileStr = strings.Replace(fileStr, "{{tbPk}}", strings.Title(tb.Pk), -1)
 		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
-		fileStr = strings.Replace(fileStr, "{{customField}}", customField, -1)
-		fileStr = strings.Replace(fileStr, "{{customRules}}", customRules, -1)
+		fileStr = strings.Replace(fileStr, "{{customField}}", customFieldEdit, -1)
+		fileStr = strings.Replace(fileStr, "{{customRules}}", customRulesEdit, -1)
 		fileStr = strings.Replace(fileStr, "{{editSubmitItems}}", editSubmitItems, -1)
 
 		if _, err := f.WriteString(fileStr); err != nil {
@@ -1381,6 +1426,8 @@ func (c *{{ctrlName}}Controller) URLMapping() {
 func (c *{{ctrlName}}Controller) Post() {
 	var v models.{{ctrlName}}
 	if err := json.Unmarshal(c.Ctx.Input.RequestBody, &v); err == nil {
+
+		{{createAuto}}
 		if _, err := models.Add{{ctrlName}}(&v); err == nil {
 			c.Ctx.Output.SetStatus(201)
 			c.Data["json"] = c.Resp(utils.ApiCode_SUCC, "ok", v)
@@ -1455,6 +1502,8 @@ func (c *{{ctrlName}}Controller) Put() {
 	id, _ := strconv.Atoi(idStr)
 	v := models.{{ctrlName}}{Id: id}
 	if err := json.Unmarshal(c.Ctx.Input.RequestBody, &v); err == nil {
+
+		{{updateAuto}}
 		if err := models.Update{{ctrlName}}ById(&v); err == nil {
 			c.Data["json"] = c.Resp(utils.ApiCode_SUCC, "ok")
 		} else {
@@ -1534,13 +1583,13 @@ func init() {
 
                     <div v-if="props.column.field=='action'" class="operate">
                         <span @click="view(props.item)">
-                            <v-tooltip content="查看" placement="top" ><v-icon type="eye-o"></v-icon></v-tooltip>
+                            <v-tooltip content="查看" :placement="props.index==0 ? 'bottom' : 'top'" ><v-icon type="eye-o"></v-icon></v-tooltip>
                         </span>
                         <span @click="edit(props.item)">
-                            <v-tooltip content="编辑" placement="top" ><v-icon type="edit"></v-icon></v-tooltip>
+                            <v-tooltip content="编辑" :placement="props.index==0 ? 'bottom' : 'top'" ><v-icon type="edit"></v-icon></v-tooltip>
                         </span>
                         <v-popconfirm :placement="props.index==0 ? 'bottom' : 'top'" title=" 确定删除吗?" @confirm="del(props.item)">
-                            <v-tooltip content="删除标签" placement="top" ><i class="fa fa-trash-o "></i></v-tooltip>
+                            <v-tooltip content="删除标签" :placement="props.index==0 ? 'bottom' : 'top'" ><i class="fa fa-trash-o "></i></v-tooltip>
                         </v-popconfirm>
                     </div>
 
@@ -1781,6 +1830,7 @@ func init() {
 
 <script>
   import {hostName} from '../../config/api';
+
   const createApi = hostName + "v1/{{tbName}}";
 
   export default {
@@ -1805,7 +1855,7 @@ func init() {
               let params = this.customForm;
 
               this.$store.state.loading     = true;
-              this.$http.post(createApi, this.$qs.stringify(params)).then(resp=> {
+              this.$http.post(createApi, this.$qs.parse(params)).then(resp=> {
                   this.$store.state.loading = false;
                   if (resp.data.status == 1) {
                       this.$notification.success({
@@ -1860,6 +1910,7 @@ func init() {
 
 <script>
   import {hostName} from '../../config/api'
+
   const UpdateAPI = hostName + "v1/{{tbName}}";
 
   export default {
@@ -1889,7 +1940,7 @@ func init() {
                       };
 
                       this.loading     = true;
-                      this.$http.put(UpdateAPI + "/" + this.customForm.{{tbPk}}, this.$qs.stringify(params)).then(resp => {
+                      this.$http.put(UpdateAPI + "/" + this.customForm.{{tbPk}}, this.$qs.parse(params)).then(resp => {
                           this.loading = false;
                           if (resp.data.status == 1) {
                               this.$notification.success({
