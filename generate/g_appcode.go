@@ -846,6 +846,8 @@ func writeControllerFiles(tables []*Table, cPath string, pkgPath string) {
 
 		var createAutoArr []string
 		var updateAutoArr []string
+		var pkgListArr []string
+		var isUserTime bool = false
 		for _, col := range tb.Columns {
 			if col.Name == "CreatedAt" {
 				if col.Tag.Type == "datetime" {
@@ -853,6 +855,7 @@ func writeControllerFiles(tables []*Table, cPath string, pkgPath string) {
 				} else if col.Tag.Type == "int" {
 					createAutoArr = append(createAutoArr, "v.CreatedAt = time.Now().Unix()\n")
 				}
+				isUserTime = true
 			}
 			if col.Name == "CreatedBy" {
 				createAutoArr = append(createAutoArr, "//v.CreatedBy = utils.User.getId()\n")
@@ -865,18 +868,27 @@ func writeControllerFiles(tables []*Table, cPath string, pkgPath string) {
 					updateAutoArr = append(updateAutoArr, "v.UpdatedAt = time.Now().Unix()\n")
 					createAutoArr = append(createAutoArr, "v.UpdatedAt = time.Now().Unix()\n")
 				}
+				isUserTime = true
 			}
 			if col.Name == "UpdatedBy" {
 				updateAutoArr = append(updateAutoArr, "//v.UpdatedBy = utils.User.getId()\n")
 			}
 		}
+
+		if isUserTime {
+			pkgListArr = append(pkgListArr, "\"time\"\n")
+		}
+
 		createAuto := strings.Join(createAutoArr, "")
 		updateAuto := strings.Join(updateAutoArr, "")
+		pkgList := strings.Join(pkgListArr, "")
 
 		fileStr := strings.Replace(CtrlTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
 		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
 		fileStr = strings.Replace(fileStr, "{{createAuto}}", createAuto, -1)
 		fileStr = strings.Replace(fileStr, "{{updateAuto}}", updateAuto, -1)
+		fileStr = strings.Replace(fileStr, "{{pkg}}", pkgList, -1)
+
 		if _, err := f.WriteString(fileStr); err != nil {
 			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpath, err)
 		}
@@ -1407,9 +1419,9 @@ import (
 	"{{pkgPath}}/models"
 	"encoding/json"
 	"strconv"
+	{{pkg}}	
 
-	"github.com/yimishiji/bee/components/base"
-	"github.com/yimishiji/bee/utils"
+	"github.com/yimishiji/bee/pkg/base"
 )
 
 // {{ctrlName}}Controller operations for {{ctrlName}}
@@ -1440,12 +1452,12 @@ func (c *{{ctrlName}}Controller) Post() {
 		{{createAuto}}
 		if _, err := models.Add{{ctrlName}}(&v); err == nil {
 			c.Ctx.Output.SetStatus(201)
-			c.Data["json"] = c.Resp(utils.ApiCode_SUCC, "ok", v)
+			c.Data["json"] = c.Resp(base.ApiCode_SUCC, "ok", v)
 		} else {
-			c.Data["json"] = c.Resp(utils.ApiCode_SYS_ERROR, "system error", err.Error())
+			c.Data["json"] = c.Resp(base.ApiCode_SYS_ERROR, "system error", err.Error())
 		}
 	} else {
-		c.Data["json"] = c.Resp(utils.ApiCode_VALIDATE_ERROR, "verification failed", err.Error())
+		c.Data["json"] = c.Resp(base.ApiCode_VALIDATE_ERROR, "verification failed", err.Error())
 	}
 	c.ServeJSON()
 }
@@ -1462,9 +1474,9 @@ func (c *{{ctrlName}}Controller) GetOne() {
 	id, _ := strconv.Atoi(idStr)
 	v, err := models.Get{{ctrlName}}ById(id)
 	if err != nil {
-		c.Data["json"] = c.Resp(utils.ApiCode_VALIDATE_ERROR, "not find", err.Error())
+		c.Data["json"] = c.Resp(base.ApiCode_VALIDATE_ERROR, "not find", err.Error())
 	} else {
-		c.Data["json"] = c.Resp(utils.ApiCode_SUCC, "ok", v)
+		c.Data["json"] = c.Resp(base.ApiCode_SUCC, "ok", v)
 	}
 	c.ServeJSON()
 }
@@ -1485,16 +1497,16 @@ func (c *{{ctrlName}}Controller) GetAll() {
 	fields, sortby, query, limit, offset, err := c.GetPagePublicParams()
 
 	if err != nil {
-		c.Data["json"] = c.Resp(utils.ApiCode_ILLEGAL_ERROR, "illegal operation", err)
+		c.Data["json"] = c.Resp(base.ApiCode_ILLEGAL_ERROR, "illegal operation", err)
 		c.ServeJSON()
 	}
 
     l, itemCount, err := models.GetAll{{ctrlName}}(query, fields, sortby, offset, limit)
 	if err != nil {
-		c.Data["json"] = c.Resp(utils.ApiCode_ILLEGAL_ERROR, "not find", err.Error())
+		c.Data["json"] = c.Resp(base.ApiCode_ILLEGAL_ERROR, "not find", err.Error())
 	} else {
-        list := utils.NewListPageData(limit, offset, itemCount, l)
-        c.Data["json"] = c.Resp(utils.ApiCode_SUCC, "ok", list)
+        list := base.NewListPageData(limit, offset, itemCount, l)
+        c.Data["json"] = c.Resp(base.ApiCode_SUCC, "ok", list)
 	}
 	c.ServeJSON()
 }
@@ -1515,12 +1527,12 @@ func (c *{{ctrlName}}Controller) Put() {
 
 		{{updateAuto}}
 		if err := models.Update{{ctrlName}}ById(&v); err == nil {
-			c.Data["json"] = c.Resp(utils.ApiCode_SUCC, "ok")
+			c.Data["json"] = c.Resp(base.ApiCode_SUCC, "ok")
 		} else {
-			c.Data["json"] = c.Resp(utils.ApiCode_SYS_ERROR, "system error", err.Error())
+			c.Data["json"] = c.Resp(base.ApiCode_SYS_ERROR, "system error", err.Error())
 		}
 	} else {
-		c.Data["json"] = c.Resp(utils.ApiCode_VALIDATE_ERROR, "verification failed", err.Error())
+		c.Data["json"] = c.Resp(base.ApiCode_VALIDATE_ERROR, "verification failed", err.Error())
 	}
 	c.ServeJSON()
 }
@@ -1536,9 +1548,9 @@ func (c *{{ctrlName}}Controller) Delete() {
 	idStr := c.Ctx.Input.Param(":id")
 	id, _ := strconv.Atoi(idStr)
 	if err := models.Delete{{ctrlName}}(id); err == nil {
-		c.Data["json"] = c.Resp(utils.ApiCode_SUCC, "ok")
+		c.Data["json"] = c.Resp(base.ApiCode_SUCC, "ok")
 	} else {
-		c.Data["json"] = c.Resp(utils.ApiCode_ILLEGAL_ERROR, "illegal operation", err.Error())
+		c.Data["json"] = c.Resp(base.ApiCode_ILLEGAL_ERROR, "illegal operation", err.Error())
 	}
 	c.ServeJSON()
 }

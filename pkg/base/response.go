@@ -1,4 +1,4 @@
-package utils
+package base
 
 // 接口错误码
 type ApiCode int8

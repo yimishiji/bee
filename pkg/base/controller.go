@@ -21,7 +21,6 @@ import (
 	"strings"
 
 	"github.com/astaxie/beego"
-	"github.com/yimishiji/bee/utils"
 )
 
 // BpmWorkflowsController operations for BpmWorkflows
@@ -30,8 +29,8 @@ type Controller struct {
 }
 
 //输出格式统一处理
-func (c *Controller) Resp(appCode utils.ApiCode, msg string, data ...interface{}) *utils.Resp {
-	resp := new(utils.Resp)
+func (c *Controller) Resp(appCode ApiCode, msg string, data ...interface{}) *Resp {
+	resp := new(Resp)
 	resp.Results = data
 	resp.Status = appCode
 	resp.StatusTxt = msg
