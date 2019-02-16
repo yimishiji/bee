@@ -16,16 +16,32 @@ package base
 
 import (
 	"errors"
+	"strings"
 	"time"
 
-	"strings"
-
 	"github.com/astaxie/beego"
+	"github.com/astaxie/beego/context"
 )
+
+type beeController struct {
+	beego.Controller
+}
 
 // BpmWorkflowsController operations for BpmWorkflows
 type Controller struct {
-	beego.Controller
+	beeController
+	accessToken string
+	User        User
+}
+
+// Init generates default values of controller operations.
+func (c *Controller) Init(ctx *context.Context, controllerName, actionName string, app interface{}) {
+	c.beeController.Init(ctx, controllerName, actionName, app)
+
+	//初始化用户token
+	token := c.Ctx.Input.Header("Authorization")
+	token = strings.Replace(token, "Bearer ", "", 1)
+	c.User.AccessToken = token
 }
 
 //输出格式统一处理
