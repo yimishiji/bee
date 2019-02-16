@@ -1086,7 +1086,7 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 
 		fileStr := strings.Replace(VueIndexTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
 		fileStr = strings.Replace(fileStr, "{{tbName}}", tb.Name, -1)
-		fileStr = strings.Replace(fileStr, "{{tbPk}}", tb.Pk, -1)
+		fileStr = strings.Replace(fileStr, "{{tbPk}}", strings.Title(tb.Pk), -1)
 		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
 		fileStr = strings.Replace(fileStr, "{{listColumn}}", listColumns, -1)
 		fileStr = strings.Replace(fileStr, "{{listColumnShow}}", listColumnShow, -1)
@@ -1121,7 +1121,7 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		}
 		fileStr = strings.Replace(VueCreateComponentTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
 		fileStr = strings.Replace(fileStr, "{{tbName}}", tb.Name, -1)
-		fileStr = strings.Replace(fileStr, "{{tbPk}}", tb.Pk, -1)
+		fileStr = strings.Replace(fileStr, "{{tbPk}}", strings.Title(tb.Pk), -1)
 		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
 		fileStr = strings.Replace(fileStr, "{{fromField}}", createFromField, -1)
 		fileStr = strings.Replace(fileStr, "{{customField}}", customFieldCreate, -1)
@@ -1707,7 +1707,7 @@ func init() {
                 this.$refs.createRef.show = true;
             },
             view: function (item) {
-                this.$refs.editRef.id = item.{{tbPk}};
+                this.$refs.editRef.{{tbPk}} = item.{{tbPk}};
                 for (let key in item) {
                     this.$refs.editRef.customForm[key] = item[key];
                 }
@@ -1715,7 +1715,7 @@ func init() {
                 this.$refs.editRef.show = true;
             },
             edit: function (item) {
-                this.$refs.editRef.id = item.{{tbPk}};
+                this.$refs.editRef.{{tbPk}} = item.{{tbPk}};
                 for (let key in item) {
                     this.$refs.editRef.customForm[key] = item[key];
                 }
@@ -1940,7 +1940,7 @@ func init() {
   export default {
       data() {
           return {
-              id     : '',
+              {{tbPk}}  : '',
               show      : false,
               loading   : false,
               updateMode: false,
