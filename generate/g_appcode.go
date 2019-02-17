@@ -1020,7 +1020,7 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 			listColumnsArr = append(listColumnsArr, tlpstr)
 
 			// Add index page select column
-			tlpstr = strings.Replace(VueIndexSelectOptionTPL, "{{fieldName}}", fieldName, -1)
+			tlpstr = strings.Replace(VueIndexSelectOptionTPL, "{{fieldName}}", col.Tag.Column, -1)
 			tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
 			selectOptionsArr = append(selectOptionsArr, tlpstr)
 
@@ -1629,8 +1629,7 @@ func init() {
         data () {
             return {
                 //下拉搜索选择
-                options    : [
-                    {{selectOptions}}
+                options    : [ {{selectOptions}}
                 ],
                 //下拉选中
                 searchType : '',
