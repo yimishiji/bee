@@ -858,7 +858,11 @@ func writeControllerFiles(tables []*Table, cPath string, pkgPath string) {
 				isUserTime = true
 			}
 			if col.Name == "CreatedBy" {
-				createAutoArr = append(createAutoArr, "//v.CreatedBy = utils.User.getId()\n")
+				if col.Tag.Type == "int" {
+					createAutoArr = append(createAutoArr, "//v.CreatedBy = strconv.Atoi(c.User.GetId())\n")
+				} else {
+					createAutoArr = append(createAutoArr, "//v.CreatedBy = c.User.GetId()\n")
+				}
 			}
 			if col.Name == "UpdatedAt" {
 				if col.Tag.Type == "datetime" {
@@ -871,7 +875,11 @@ func writeControllerFiles(tables []*Table, cPath string, pkgPath string) {
 				isUserTime = true
 			}
 			if col.Name == "UpdatedBy" {
-				updateAutoArr = append(updateAutoArr, "//v.UpdatedBy = utils.User.getId()\n")
+				if col.Tag.Type == "int" {
+					updateAutoArr = append(updateAutoArr, "//v.UpdatedBy = strconv.Atoi(c.User.GetId())\n")
+				} else {
+					updateAutoArr = append(updateAutoArr, "//v.UpdatedBy = c.User.GetId()\n")
+				}
 			}
 		}
 
