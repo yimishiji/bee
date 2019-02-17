@@ -1306,14 +1306,12 @@ const (
 {{modelStruct}}
 `
 
-	ModelTPL = `package models
+	ModelTPL string = `package models
 
 import (
-	"fmt"
-	"reflect"
 	"strings"
 	{{timePkg}}
-	"github.com/astaxie/beego/orm"
+    "github.com/yimishiji/bee/pkg/db"
 )
 
 {{modelStruct}}
@@ -1322,104 +1320,88 @@ func (t *{{modelName}}) TableName() string {
 	return "{{tableName}}"
 }
 
-func init() {
-	orm.RegisterModel(new({{modelName}}))
-}
 
 // Add{{modelName}} insert a new {{modelName}} into database and returns
 // last inserted Id on success.
-func Add{{modelName}}(m *{{modelName}}) (id int64, err error) {
-	o := orm.NewOrm()
-	id, err = o.Insert(m)
-	return
+func Add{{modelName}}(m *{{modelName}}) (err error) {
+    res := db.Conn.Create(m)
+    return res.Error
 }
 
 // Get{{modelName}}ById retrieves {{modelName}} by Id. Returns error if
 // Id doesn't exist
 func Get{{modelName}}ById(id int) (v *{{modelName}}, err error) {
-	o := orm.NewOrm()
-	v = &{{modelName}}{Id: id}
-	if err = o.Read(v); err == nil {
-		return v, nil
-	}
-	return nil, err
+    l := new({{modelName}})
+    res := db.Conn.Where(id).First(&l)
+    return l, res.Error
 }
 
 // GetAll{{modelName}} retrieves all {{modelName}} matches certain condition. Returns empty list if
 // no records exist
-func GetAll{{modelName}}(query map[string]string, fields []string, sortFields []string, offset int64, limit int64) (ml []interface{}, total int64, err error) {
-	o := orm.NewOrm()
-	qs := o.QueryTable(new({{modelName}}))
-	// query k=v
-	for k, v := range query {
-		// rewrite dot-notation to Object__Attribute
-		k = strings.Replace(k, ".", "__", -1)
-		if strings.Contains(k, "isnull") {
-			qs = qs.Filter(k, (v == "true" || v == "1"))
-		} else {
-			qs = qs.Filter(k, v)
-		}
-	}
-	// order by:
-    qs = qs.OrderBy(sortFields...)
-	
-	//total
-	itemCount, err := qs.Count()
-	if err != nil || itemCount == 0 {
-		return ml, itemCount, err
-	}
+func GetAll{{modelName}}(query map[string]string, fields []string, sortFields []string, offset int64, limit int64) (ml []{{modelName}}, total int64, err error) {
+    //过虑条件
+    gormQuery := db.NewGormQuery(query)
 
+    //排序
+    for _, v := range sortFields {
+        gormQuery = gormQuery.Order(v)
+    }
+
+    //获取总页数
+    var itemCount int64
+    gormQuery.Model({{modelName}}{}).Count(&itemCount)
+
+    //select
+    if len(fields) > 0 {
+        gormQuery = gormQuery.Select(strings.Join(fields, ","))
+    }
+
+    //查询
 	var l []{{modelName}}
-	if _, err = qs.Limit(limit, offset).All(&l, fields...); err == nil {
-		if len(fields) == 0 {
-			for _, v := range l {
-				ml = append(ml, v)
-			}
-		} else {
-			// trim unused fields
-			for _, v := range l {
-				m := make(map[string]interface{})
-				val := reflect.ValueOf(v)
-				for _, fname := range fields {
-					m[fname] = val.FieldByName(fname).Interface()
-				}
-				ml = append(ml, m)
-			}
-		}
-		return ml, itemCount, nil
-	}
-	return nil, itemCount, err
+    err = gormQuery.Limit(limit).Offset(offset).Find(&l).Error
+    if err != nil {
+        return nil, itemCount, err
+    }
+
+    // 如果需要精简返回值，将返回列表类型设为 []interface{}，再调用以下函数
+    //ml = db.SelectField(l, fields)
+
+	return l, itemCount, err
 }
 
 // Update{{modelName}} updates {{modelName}} by Id and returns error if
 // the record to be updated doesn't exist
 func Update{{modelName}}ById(m *{{modelName}}) (err error) {
-	o := orm.NewOrm()
-	v := {{modelName}}{Id: m.Id}
+	v := new({{modelName}})
+
 	// ascertain id exists in the database
-	if err = o.Read(&v); err == nil {
-		var num int64
-		if num, err = o.Update(m); err == nil {
-			fmt.Println("Number of records updated in database:", num)
-		}
+    err = db.Conn.Where(m.Id).First(&v).Error
+	if err != nil {
+		return err
 	}
-	return
+
+	return db.Conn.Save(m).Error
 }
 
 // Delete{{modelName}} deletes {{modelName}} by Id and returns error if
 // the record to be deleted doesn't exist
 func Delete{{modelName}}(id int) (err error) {
-	o := orm.NewOrm()
-	v := {{modelName}}{Id: id}
+	v := new({{modelName}})
+
 	// ascertain id exists in the database
-	if err = o.Read(&v); err == nil {
-		var num int64
-		if num, err = o.Delete(&{{modelName}}{Id: id}); err == nil {
-			fmt.Println("Number of records deleted in database:", num)
-		}
+	err = db.Conn.Where(id).First(&v).Error
+	if err != nil {
+		return err
 	}
-	return
+
+	return  db.Conn.Delete(&v).Error
 }
+
+// BeforeCreate hook
+//func (user *SdbB2cCustomerLog) BeforeCreate(scope *gorm.Scope) error {
+//    //scope.SetColumn("ID", uuid.New())
+//    return nil
+//}
 `
 	CtrlTPL = `package controllers
 
@@ -1429,7 +1411,7 @@ import (
 	"strconv"
 	{{pkg}}	
 
-	"github.com/yimishiji/bee/pkg/base"
+    "github.com/yimishiji/bee/pkg/base"
 )
 
 // {{ctrlName}}Controller operations for {{ctrlName}}
@@ -1458,7 +1440,7 @@ func (c *{{ctrlName}}Controller) Post() {
 	if err := json.Unmarshal(c.Ctx.Input.RequestBody, &v); err == nil {
 
 		{{createAuto}}
-		if _, err := models.Add{{ctrlName}}(&v); err == nil {
+		if err := models.Add{{ctrlName}}(&v); err == nil {
 			c.Ctx.Output.SetStatus(201)
 			c.Data["json"] = c.Resp(base.ApiCode_SUCC, "ok", v)
 		} else {
@@ -1492,7 +1474,7 @@ func (c *{{ctrlName}}Controller) GetOne() {
 // GetAll ...
 // @Title Get All
 // @Description get {{ctrlName}}
-// @Param	query	query	string	false	"Filter. e.g. col1:v1,col2:v2 ..."
+// @Param	query	query	string	false	"Filter. e.g. col1:v1,col2:v2,col-isnull:,col:>50,col:like-adc,col:between-10-20 ..."
 // @Param	fields	query	string	false	"Fields returned. e.g. col1,col2 ..."
 // @Param	sortby	query	string	false	"Sorted-by fields. e.g. col1,col2 ..."
 // @Param	order	query	string	false	"Order corresponding to each sortby field, if single value, apply to all sortby fields. e.g. desc,asc ..."
