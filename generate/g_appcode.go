@@ -737,6 +737,8 @@ func createPaths(mode byte, paths *MvcPath) {
 	}
 }
 
+var notirceMsgArr []string
+
 // writeSourceFiles generates source files for model/controller/router
 // It will wipe the following directories and recreate them:./models, ./controllers, ./routers
 // Newly geneated files will be inside these folders.
@@ -760,6 +762,10 @@ func writeSourceFiles(pkgPath string, tables []*Table, mode byte, paths *MvcPath
 	if (OVue & mode) == OVue {
 		beeLogger.Log.Info("Creating router files...")
 		writeVueControllerIndex(tables, paths.VuePath, pkgPath)
+	}
+
+	if len(notirceMsgArr) > 0 {
+		beeLogger.Log.Warnf("add to file this route \n '%s'\n", strings.Join(notirceMsgArr, "\n"))
 	}
 }
 
@@ -910,6 +916,11 @@ func writeControllerFiles(tables []*Table, cPath string, pkgPath string) {
 		utils.CloseFile(f)
 		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpath, "\x1b[0m")
 		utils.FormatSourceCode(fpath)
+
+		fileStr = strings.Replace(operateListTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
+		fileStr = strings.Replace(fileStr, "{{urlPath}}", tb.Name, -1)
+		notirceMsgArr = append(notirceMsgArr, "add to operate list"+fileStr)
+
 	}
 }
 
@@ -1009,7 +1020,7 @@ func writeRouterFile(tables []*Table, rPath string, pkgPath string) {
 		//	}
 		//} else {
 		beeLogger.Log.Warnf("Skipped create file '%s'", fpath)
-		beeLogger.Log.Warnf("add to file this route \n '%s'\n", strings.Join(nameSpaces, ""))
+		notirceMsgArr = append(notirceMsgArr, "add to routers/router.go \n"+strings.Join(nameSpaces, ""))
 		return
 		//}
 	} else {
@@ -2211,5 +2222,27 @@ func init() {
     }
 </style>
 
+`
+	operateListTPL = `
+	operateList = append(operateList, RoleRight{
+		RightName:   "{{ctrlName}}-list",
+		RightAction: "[GET]{{urlPath}}",
+		FrontURL:    "{{urlPath}}",
+	})
+	operateList = append(operateList, RoleRight{
+		RightName:   "{{ctrlName}}-create",
+		RightAction: "[POST]{{urlPath}}",
+		FrontURL:    "{{urlPath}}",
+	})
+	operateList = append(operateList, RoleRight{
+		RightName:   "{{ctrlName}}-update",
+		RightAction: "[PUT]{{urlPath}}",
+		FrontURL:    "{{urlPath}}",
+	})
+	operateList = append(operateList, RoleRight{
+		RightName:   "{{ctrlName}}-delete",
+		RightAction: "[DELETE]{{urlPath}}",
+		FrontURL:    "{{urlPath}}",
+	})
 `
 )
