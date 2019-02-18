@@ -64,6 +64,7 @@ type MvcPath struct {
 	ControllerPath string
 	RouterPath     string
 	VuePath        string
+	FilterPath     string
 }
 
 // typeMapping maps SQL data type to corresponding Go data type
@@ -321,6 +322,7 @@ func gen(dbms, connStr string, mode byte, selectedTableNames map[string]bool, ap
 		mvcPath.ControllerPath = path.Join(apppath, "controllers")
 		mvcPath.RouterPath = path.Join(apppath, "routers")
 		mvcPath.VuePath = path.Join(apppath, "vue/src/components")
+		mvcPath.FilterPath = path.Join(apppath, "filters")
 
 		createPaths(mode, mvcPath)
 		pkgPath := getPackagePath(apppath)
@@ -725,6 +727,7 @@ func createPaths(mode byte, paths *MvcPath) {
 	}
 	if (mode & OController) == OController {
 		os.Mkdir(paths.ControllerPath, 0777)
+		os.Mkdir(paths.FilterPath, 0777)
 	}
 	if (mode & ORouter) == ORouter {
 		os.Mkdir(paths.RouterPath, 0777)
@@ -745,6 +748,10 @@ func writeSourceFiles(pkgPath string, tables []*Table, mode byte, paths *MvcPath
 	if (OController & mode) == OController {
 		beeLogger.Log.Info("Creating controller files...")
 		writeControllerFiles(tables, paths.ControllerPath, pkgPath)
+
+		beeLogger.Log.Info("Creating controller files...")
+		writeFilterFiles(tables, paths.FilterPath, pkgPath)
+
 	}
 	if (ORouter & mode) == ORouter {
 		beeLogger.Log.Info("Creating router files...")
@@ -899,6 +906,72 @@ func writeControllerFiles(tables []*Table, cPath string, pkgPath string) {
 
 		if _, err := f.WriteString(fileStr); err != nil {
 			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpath, err)
+		}
+		utils.CloseFile(f)
+		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpath, "\x1b[0m")
+		utils.FormatSourceCode(fpath)
+	}
+}
+
+// writeControllerFiles generates controller files
+func writeFilterFiles(tables []*Table, cPath string, pkgPath string) {
+	w := colors.NewColorWriter(os.Stdout)
+
+	for _, tb := range tables {
+		if tb.Pk == "" {
+			continue
+		}
+		filename := getFileName(tb.Name)
+		fpath := path.Join(cPath, filename+".go")
+		var f *os.File
+		var err error
+		if utils.IsExist(fpath) {
+			beeLogger.Log.Warnf("'%s' already exists. Do you want to overwrite it? [Yes|No] ", fpath)
+			if utils.AskForConfirmation() {
+				f, err = os.OpenFile(fpath, os.O_RDWR|os.O_TRUNC, 0666)
+				if err != nil {
+					beeLogger.Log.Warnf("%s", err)
+					continue
+				}
+			} else {
+				beeLogger.Log.Warnf("Skipped create file '%s'", fpath)
+				continue
+			}
+		} else {
+			f, err = os.OpenFile(fpath, os.O_CREATE|os.O_RDWR, 0666)
+			if err != nil {
+				beeLogger.Log.Warnf("%s", err)
+				continue
+			}
+		}
+
+		var pkgListArr []string
+		var validArr []string
+		var isUserTime bool = false
+		for _, col := range tb.Columns {
+			if col.Tag.Null == false {
+				fileStr := strings.Replace(FilterValidRuleTPL, "{{validFunc}}", "Required", -1)
+				fileStr = strings.Replace(fileStr, "{{colName}}", col.Name, -1)
+				fileStr = strings.Replace(fileStr, "{{colColumn}}", col.Tag.Column, -1)
+				fileStr = strings.Replace(fileStr, "{{msg}}", col.Tag.Column+"is now allow null", -1)
+				validArr = append(validArr, fileStr)
+			}
+		}
+
+		if isUserTime {
+			pkgListArr = append(pkgListArr, "\"time\"\n")
+		}
+
+		pkgList := strings.Join(pkgListArr, "")
+		validStr := strings.Join(validArr, "")
+
+		fileStr := strings.Replace(FilterTPL, "{{modelName}}", utils.CamelCase(tb.Name), -1)
+		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
+		fileStr = strings.Replace(fileStr, "{{pkg}}", pkgList, -1)
+		fileStr = strings.Replace(fileStr, "{{ValidRuleList}}", validStr, -1)
+
+		if _, err := f.WriteString(fileStr); err != nil {
+			beeLogger.Log.Fatalf("Could not write filter file to '%s': %s", fpath, err)
 		}
 		utils.CloseFile(f)
 		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpath, "\x1b[0m")
@@ -1407,8 +1480,7 @@ func Delete{{modelName}}(id int) (err error) {
 
 import (
 	"{{pkgPath}}/models"
-	"encoding/json"
-	"strconv"
+    "{{pkgPath}}/filters"
 	{{pkg}}	
 
     "github.com/yimishiji/bee/pkg/base"
@@ -1417,6 +1489,7 @@ import (
 // {{ctrlName}}Controller operations for {{ctrlName}}
 type {{ctrlName}}Controller struct {
 	base.Controller
+    filter *filters.{{ctrlName}}Filter
 }
 
 // URLMapping ...
@@ -1428,6 +1501,11 @@ func (c *{{ctrlName}}Controller) URLMapping() {
 	c.Mapping("Delete", c.Delete)
 }
 
+// init inputFilter
+func (c *{{ctrlName}}Controller) Prepare() {
+    c.filter = filters.New{{ctrlName}}Filter(c.Ctx.Input)
+}
+
 // Post ...
 // @Title Post
 // @Description create {{ctrlName}}
@@ -1436,8 +1514,7 @@ func (c *{{ctrlName}}Controller) URLMapping() {
 // @Failure 403 body is empty
 // @router / [post]
 func (c *{{ctrlName}}Controller) Post() {
-	var v models.{{ctrlName}}
-	if err := json.Unmarshal(c.Ctx.Input.RequestBody, &v); err == nil {
+    if v, err := c.filter.Get{{ctrlName}}Post(); err == nil {
 
 		{{createAuto}}
 		if err := models.Add{{ctrlName}}(&v); err == nil {
@@ -1447,7 +1524,7 @@ func (c *{{ctrlName}}Controller) Post() {
 			c.Data["json"] = c.Resp(base.ApiCode_SYS_ERROR, "system error", err.Error())
 		}
 	} else {
-		c.Data["json"] = c.Resp(base.ApiCode_VALIDATE_ERROR, "verification failed", err.Error())
+		c.Data["json"] = c.Resp(base.ApiCode_VALIDATE_ERROR, "invalid:"+err.Error(), err.Error())
 	}
 	c.ServeJSON()
 }
@@ -1460,8 +1537,7 @@ func (c *{{ctrlName}}Controller) Post() {
 // @Failure 403 :id is empty
 // @router /:id [get]
 func (c *{{ctrlName}}Controller) GetOne() {
-	idStr := c.Ctx.Input.Param(":id")
-	id, _ := strconv.Atoi(idStr)
+    id := c.filter.GetId(":id")
 	v, err := models.Get{{ctrlName}}ById(id)
 	if err != nil {
 		c.Data["json"] = c.Resp(base.ApiCode_VALIDATE_ERROR, "not find", err.Error())
@@ -1484,18 +1560,17 @@ func (c *{{ctrlName}}Controller) GetOne() {
 // @Failure 403
 // @router / [get]
 func (c *{{ctrlName}}Controller) GetAll() {
-	fields, sortby, query, limit, offset, err := c.GetPagePublicParams()
-
+    pageParams, err := c.filter.GetListPrams()
 	if err != nil {
 		c.Data["json"] = c.Resp(base.ApiCode_ILLEGAL_ERROR, "illegal operation", err)
 		c.ServeJSON()
 	}
 
-    l, itemCount, err := models.GetAll{{ctrlName}}(query, fields, sortby, offset, limit)
+    l, itemCount, err := models.GetAll{{ctrlName}}(pageParams.Querys, pageParams.Field, pageParams.Sort, pageParams.Offsets, pageParams.Limits)
 	if err != nil {
 		c.Data["json"] = c.Resp(base.ApiCode_ILLEGAL_ERROR, "not find", err.Error())
 	} else {
-        list := base.NewListPageData(limit, offset, itemCount, l)
+        list := base.NewListPageData(pageParams.Limits, pageParams.Offsets, itemCount, l)
         c.Data["json"] = c.Resp(base.ApiCode_SUCC, "ok", list)
 	}
 	c.ServeJSON()
@@ -1510,10 +1585,9 @@ func (c *{{ctrlName}}Controller) GetAll() {
 // @Failure 403 :id is not int
 // @router /:id [put]
 func (c *{{ctrlName}}Controller) Put() {
-	idStr := c.Ctx.Input.Param(":id")
-	id, _ := strconv.Atoi(idStr)
+    id := c.filter.GetId(":id")
 	v := models.{{ctrlName}}{Id: id}
-	if err := json.Unmarshal(c.Ctx.Input.RequestBody, &v); err == nil {
+    if v, err := c.filter.Get{{ctrlName}}Put(v); err == nil {
 
 		{{updateAuto}}
 		if err := models.Update{{ctrlName}}ById(&v); err == nil {
@@ -1522,7 +1596,7 @@ func (c *{{ctrlName}}Controller) Put() {
 			c.Data["json"] = c.Resp(base.ApiCode_SYS_ERROR, "system error", err.Error())
 		}
 	} else {
-		c.Data["json"] = c.Resp(base.ApiCode_VALIDATE_ERROR, "verification failed", err.Error())
+		c.Data["json"] = c.Resp(base.ApiCode_VALIDATE_ERROR, "invalid:"+err.Error(), err.Error())
 	}
 	c.ServeJSON()
 }
@@ -1535,8 +1609,7 @@ func (c *{{ctrlName}}Controller) Put() {
 // @Failure 403 id is empty
 // @router /:id [delete]
 func (c *{{ctrlName}}Controller) Delete() {
-	idStr := c.Ctx.Input.Param(":id")
-	id, _ := strconv.Atoi(idStr)
+    id := c.filter.GetId(":id")
 	if err := models.Delete{{ctrlName}}(id); err == nil {
 		c.Data["json"] = c.Resp(base.ApiCode_SUCC, "ok")
 	} else {
@@ -1545,6 +1618,84 @@ func (c *{{ctrlName}}Controller) Delete() {
 	c.ServeJSON()
 }
 `
+	FilterTPL = `
+package filters
+
+import (
+	"bpm-api/models"
+	"encoding/json"
+	"errors"
+
+	"github.com/astaxie/beego/context"
+	"github.com/astaxie/beego/validation"
+	"github.com/yimishiji/bee/pkg/filters"
+)
+
+type {{modelName}}Filter struct {
+	filters.InputFilter
+}
+
+func New{{modelName}}Filter(r *context.BeegoInput) *{{modelName}}Filter {
+	return &{{modelName}}Filter{
+		filters.InputFilter{
+			Input: r,
+		},
+	}
+}
+
+//获取Post接交数据
+func (this *{{modelName}}Filter) Get{{modelName}}Post() (model models.{{modelName}}, err error) {
+	var v models.{{modelName}}
+	return this.get{{modelName}}(v)
+}
+
+//获取put提交数据
+func (this *{{modelName}}Filter) Get{{modelName}}Put(v models.{{modelName}}) (model models.{{modelName}}, err error) {
+	return this.get{{modelName}}(v)
+}
+
+//数据过滤
+func (this *{{modelName}}Filter) get{{modelName}}(v models.{{modelName}}) (model models.{{modelName}}, err error) {
+
+	if err := json.Unmarshal(this.Input.RequestBody, &v); err == nil {
+
+		//验证器
+		valid := validation.Validation{}{{ValidRuleList}}
+		if valid.HasErrors() {
+			err = errors.New(valid.Errors[0].String())
+			return v, err
+		}
+
+		//自定义验证方法
+		//if filters.InStingArr(v.Type, []string{"orders", "goods", "users"}) == false {
+		//	return v, errors.New("type is not enable")
+		//}
+
+		return v, nil
+	} else {
+		return v, err
+	}
+}
+
+//分页参数
+func (this *{{modelName}}Filter) GetListPrams() (params *filters.PageCommonParams, err error) {
+	if params, err := this.GetPagePublicParams(); err == nil {
+
+		//验证筛选的条件合法性
+		//if t, ok := params.Querys["type"]; ok {
+		//	if filters.InStingArr(t, []string{"orders", "goods", "users"}) == false {
+		//		return params, errors.New("type is not enable")
+		//	}
+		//}
+
+		return params, nil
+	} else {
+		return params, err
+	}
+}
+`
+	FilterValidRuleTPL = `
+		valid.{{validFunc}}(v.{{colName}}, "{{colColumn}}").Message("{{msg}}")`
 	RouterTPL = `// @APIVersion 1.0.0
 // @Title beego Test API
 // @Description beego has a very cool tools to autogenerate documents for your API
