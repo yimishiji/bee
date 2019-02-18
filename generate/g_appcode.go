@@ -1566,7 +1566,7 @@ func (c *{{ctrlName}}Controller) GetAll() {
 		c.ServeJSON()
 	}
 
-    l, itemCount, err := models.GetAll{{ctrlName}}(pageParams.Querys, pageParams.Field, pageParams.Sort, pageParams.Offsets, pageParams.Limits)
+    l, itemCount, err := models.GetAll{{ctrlName}}(pageParams.Querys, pageParams.Field, pageParams.SortFields, pageParams.Offsets, pageParams.Limits)
 	if err != nil {
 		c.Data["json"] = c.Resp(base.ApiCode_ILLEGAL_ERROR, "not find", err.Error())
 	} else {
