@@ -34,7 +34,7 @@ func (c *InputFilter) GetPagePublicParams() (p *PageCommonParams, err error) {
 	if v, err := c.GetInt64("offset"); err == nil {
 		params.Offsets = v
 	} else if page, err := c.GetInt64("page"); err == nil {
-		params.Offsets = page * params.Limits
+		params.Offsets = (page - 1) * params.Limits
 	}
 
 	// sortby: col1,col2
