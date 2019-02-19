@@ -27,6 +27,7 @@ import (
 	_ "github.com/lib/pq"
 	beeLogger "github.com/yimishiji/bee/logger"
 	"github.com/yimishiji/bee/logger/colors"
+	strings2 "github.com/yimishiji/bee/pkg/strings"
 	"github.com/yimishiji/bee/utils"
 )
 
@@ -260,9 +261,9 @@ func (tag *OrmTag) String() string {
 		return ""
 	}
 	if tag.Comment != "" {
-		return fmt.Sprintf("`json:\"%s\" gorm:\"%s\" description:\"%s\"`", utils.CamelCase(tag.Column), strings.Join(ormOptions, ";"), tag.Comment)
+		return fmt.Sprintf("`json:\"%s\" gorm:\"%s\" description:\"%s\"`", tag.Column, strings.Join(ormOptions, ";"), tag.Comment)
 	}
-	return fmt.Sprintf("`json:\"%s\" gorm:\"%s\"`", utils.CamelCase(tag.Column), strings.Join(ormOptions, ";"))
+	return fmt.Sprintf("`json:\"%s\" gorm:\"%s\"`", tag.Column, strings.Join(ormOptions, ";"))
 }
 
 func GenerateAppcode(driver, connStr, level, tables, currpath string) {
@@ -764,7 +765,7 @@ func writeSourceFiles(pkgPath string, tables []*Table, mode byte, paths *MvcPath
 	}
 
 	if len(notirceMsgArr) > 0 {
-		beeLogger.Log.Warnf("add to file this route \n '%s'\n", strings.Join(notirceMsgArr, "\n"))
+		beeLogger.Log.Warnf("add to file this route \n %s\n", strings.Join(notirceMsgArr, "\n"))
 	}
 }
 
@@ -774,7 +775,7 @@ func writeModelFiles(tables []*Table, mPath string) {
 
 	for _, tb := range tables {
 		filename := getFileName(tb.Name)
-		fpath := path.Join(mPath, filename+".go")
+		fpath := path.Join(mPath, filename+"Model.go")
 		var f *os.File
 		var err error
 		if utils.IsExist(fpath) {
@@ -834,7 +835,7 @@ func writeControllerFiles(tables []*Table, cPath string, pkgPath string) {
 			continue
 		}
 		filename := getFileName(tb.Name)
-		fpath := path.Join(cPath, filename+".go")
+		fpath := path.Join(cPath, filename+"Controller.go")
 		var f *os.File
 		var err error
 		if utils.IsExist(fpath) {
@@ -918,7 +919,8 @@ func writeControllerFiles(tables []*Table, cPath string, pkgPath string) {
 		utils.FormatSourceCode(fpath)
 
 		fileStr = strings.Replace(operateListTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
-		fileStr = strings.Replace(fileStr, "{{urlPath}}", tb.Name, -1)
+		fileStr = strings.Replace(fileStr, "{{pageUrl}}", strings2.UrlStyleString(tb.Name), -1)
+
 		operateListArr = append(operateListArr, fileStr)
 
 	}
@@ -934,7 +936,7 @@ func writeFilterFiles(tables []*Table, cPath string, pkgPath string) {
 			continue
 		}
 		filename := getFileName(tb.Name)
-		fpath := path.Join(cPath, filename+".go")
+		fpath := path.Join(cPath, filename+"Filter.go")
 		var f *os.File
 		var err error
 		if utils.IsExist(fpath) {
@@ -1001,7 +1003,7 @@ func writeRouterFile(tables []*Table, rPath string, pkgPath string) {
 			continue
 		}
 		// Add namespaces
-		nameSpace := strings.Replace(NamespaceTPL, "{{nameSpace}}", tb.Name, -1)
+		nameSpace := strings.Replace(NamespaceTPL, "{{nameSpace}}", strings2.UrlStyleString(tb.Name), -1)
 		nameSpace = strings.Replace(nameSpace, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
 		nameSpaces = append(nameSpaces, nameSpace)
 	}
@@ -1050,9 +1052,10 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		if tb.Pk == "" {
 			continue
 		}
-		filename := getFileName(tb.Name)
+		vueComponentPath := strings2.LowerCamelCase(tb.Name)
+		pageUrl := strings2.UrlStyleString(tb.Name)
 
-		cBase := cPath + string(os.PathSeparator) + filename
+		cBase := cPath + string(os.PathSeparator) + vueComponentPath
 		os.Mkdir(cBase, 0777)
 
 		//列表
@@ -1098,7 +1101,7 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 				fieldComment = col.Name
 			}
 			// Add index page list column
-			tlpstr := strings.Replace(VueIndexListColumnTPL, "{{fieldName}}", fieldName, -1)
+			tlpstr := strings.Replace(VueIndexListColumnTPL, "{{fieldName}}", col.Tag.Column, -1)
 			tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
 			if index > 6 {
 				tlpstr = strings.Replace(tlpstr, "show: true", "show: false", -1)
@@ -1182,11 +1185,13 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 
 		fileStr := strings.Replace(VueIndexTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
 		fileStr = strings.Replace(fileStr, "{{tbName}}", tb.Name, -1)
-		fileStr = strings.Replace(fileStr, "{{tbPk}}", strings.Title(tb.Pk), -1)
+		fileStr = strings.Replace(fileStr, "{{tbPk}}", tb.Pk, -1)
 		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
 		fileStr = strings.Replace(fileStr, "{{listColumn}}", listColumns, -1)
 		fileStr = strings.Replace(fileStr, "{{listColumnShow}}", listColumnShow, -1)
 		fileStr = strings.Replace(fileStr, "{{selectOptions}}", selectOptions, -1)
+		fileStr = strings.Replace(fileStr, "{{pageUrl}}", pageUrl, -1)
+
 		if _, err := f.WriteString(fileStr); err != nil {
 			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpathIndex, err)
 		}
@@ -1217,11 +1222,12 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		}
 		fileStr = strings.Replace(VueCreateComponentTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
 		fileStr = strings.Replace(fileStr, "{{tbName}}", tb.Name, -1)
-		fileStr = strings.Replace(fileStr, "{{tbPk}}", strings.Title(tb.Pk), -1)
+		fileStr = strings.Replace(fileStr, "{{tbPk}}", tb.Pk, -1)
 		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
 		fileStr = strings.Replace(fileStr, "{{fromField}}", createFromField, -1)
 		fileStr = strings.Replace(fileStr, "{{customField}}", customFieldCreate, -1)
 		fileStr = strings.Replace(fileStr, "{{customRules}}", customRulesCreate, -1)
+		fileStr = strings.Replace(fileStr, "{{pageUrl}}", pageUrl, -1)
 		if _, err := f.WriteString(fileStr); err != nil {
 			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpathIndex, err)
 		}
@@ -1253,11 +1259,12 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		fileStr = strings.Replace(vueEditComponentTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
 		fileStr = strings.Replace(fileStr, "{{fromField}}", editfromField, -1)
 		fileStr = strings.Replace(fileStr, "{{tbName}}", tb.Name, -1)
-		fileStr = strings.Replace(fileStr, "{{tbPk}}", strings.Title(tb.Pk), -1)
+		fileStr = strings.Replace(fileStr, "{{tbPk}}", tb.Pk, -1)
 		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
 		fileStr = strings.Replace(fileStr, "{{customField}}", customFieldEdit, -1)
 		fileStr = strings.Replace(fileStr, "{{customRules}}", customRulesEdit, -1)
 		fileStr = strings.Replace(fileStr, "{{editSubmitItems}}", editSubmitItems, -1)
+		fileStr = strings.Replace(fileStr, "{{pageUrl}}", pageUrl, -1)
 
 		if _, err := f.WriteString(fileStr); err != nil {
 			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpathIndex, err)
@@ -1296,11 +1303,12 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		utils.FormatSourceCode(fpathIndex)
 
 		//vue 路由规则
-		fileStr = strings.Replace(vueRuleTPL, "{{urlPath}}", tb.Name, -1)
+		fileStr = strings.Replace(vueRuleTPL, "{{pageUrl}}", pageUrl, -1)
+		fileStr = strings.Replace(fileStr, "{{filPath}}", vueComponentPath, -1)
 		vueRuleArr = append(vueRuleArr, fileStr)
 
 		//vue 菜单
-		fileStr = strings.Replace(menuListTPL, "{{urlPath}}", tb.Name, -1)
+		fileStr = strings.Replace(menuListTPL, "{{pageUrl}}", pageUrl, -1)
 		fileStr = strings.Replace(fileStr, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
 		vueMenuArr = append(vueMenuArr, fileStr)
 	}
@@ -1358,7 +1366,7 @@ func extractDecimal(colType string) (digits string, decimals string) {
 
 func getFileName(tbName string) (filename string) {
 	// avoid test file
-	filename = tbName
+	filename = utils.CamelCase(tbName)
 	for strings.HasSuffix(filename, "_test") {
 		pos := strings.LastIndex(filename, "_")
 		filename = filename[:pos] + filename[pos+1:]
@@ -1749,8 +1757,7 @@ func init() {
 			beego.NSInclude(
 				&controllers.{{ctrlName}}Controller{},
 			),
-		),
-`
+		),`
 	VueIndexTPL = `
 <template>
     <div class="main">
@@ -1799,8 +1806,8 @@ func init() {
     import editVue from './EditComponent.vue'
     import colSetting from './ColSettingComponent.vue'
 
-    const IndexApi = hostName+"v1/{{tbName}}";
-    const DeleteAPI = hostName+"v1/{{tbName}}";
+    const IndexApi = hostName+"v1/{{pageUrl}}";
+    const DeleteAPI = hostName+"v1/{{pageUrl}}";
 
     export default {
         data () {
@@ -2018,7 +2025,7 @@ func init() {
 <script>
   import {hostName} from '../../config/api';
 
-  const createApi = hostName + "v1/{{tbName}}";
+  const createApi = hostName + "v1/{{pageUrl}}";
 
   export default {
       data() {
@@ -2101,7 +2108,7 @@ func init() {
 <script>
   import {hostName} from '../../config/api'
 
-  const UpdateAPI = hostName + "v1/{{tbName}}";
+  const UpdateAPI = hostName + "v1/{{pageUrl}}";
 
   export default {
       data() {
@@ -2241,32 +2248,30 @@ func init() {
 	operateListTPL = `
 	operateList = append(operateList, RoleRight{
 		RightName:   "{{ctrlName}}-list",
-		RightAction: "[GET]/{{urlPath}}",
-		FrontURL:    "{{urlPath}}",
+		RightAction: "[GET]/{{pageUrl}}",
+		FrontURL:    "{{pageUrl}}",
 	})
 	operateList = append(operateList, RoleRight{
 		RightName:   "{{ctrlName}}-create",
-		RightAction: "[POST]/{{urlPath}}",
-		FrontURL:    "{{urlPath}}",
+		RightAction: "[POST]/{{pageUrl}}",
+		FrontURL:    "{{pageUrl}}",
 	})
 	operateList = append(operateList, RoleRight{
 		RightName:   "{{ctrlName}}-update",
-		RightAction: "[PUT]/{{urlPath}}",
-		FrontURL:    "{{urlPath}}",
+		RightAction: "[PUT]/{{pageUrl}}",
+		FrontURL:    "{{pageUrl}}",
 	})
 	operateList = append(operateList, RoleRight{
 		RightName:   "{{ctrlName}}-delete",
-		RightAction: "[DELETE]/{{urlPath}}",
-		FrontURL:    "{{urlPath}}",
+		RightAction: "[DELETE]/{{pageUrl}}",
+		FrontURL:    "{{pageUrl}}",
 	})
 `
 	vueRuleTPL = `
               {
-                  path: '/{{urlPath}}/index',
-                  component: name => require(['../components/{{urlPath}}/Index'], name),
-              },
-`
+                  path: '/{{pageUrl}}/index',
+                  component: name => require(['../components/{{filPath}}/Index'], name),
+              },`
 	menuListTPL = `
-                    {"name":"{{ctrlName}}","url":"/{{urlPath}}/index","icon":"bars"},
-`
+                    {"name":"{{ctrlName}}","url":"/{{pageUrl}}/index","icon":"bars"},`
 )
