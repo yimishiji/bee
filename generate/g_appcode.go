@@ -1291,6 +1291,10 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpathIndex, "\x1b[0m")
 		utils.FormatSourceCode(fpathIndex)
 
+		//vue 菜单
+		fileStr = strings.Replace(menuListTPL, "{{urlPath}}", tb.Name, -1)
+		notirceMsgArr = append(notirceMsgArr, "add to vue menu \n"+fileStr)
+
 	}
 }
 
@@ -2226,23 +2230,29 @@ func init() {
 	operateListTPL = `
 	operateList = append(operateList, RoleRight{
 		RightName:   "{{ctrlName}}-list",
-		RightAction: "[GET]{{urlPath}}",
+		RightAction: "[GET]/{{urlPath}}",
 		FrontURL:    "{{urlPath}}",
 	})
 	operateList = append(operateList, RoleRight{
 		RightName:   "{{ctrlName}}-create",
-		RightAction: "[POST]{{urlPath}}",
+		RightAction: "[POST]/{{urlPath}}",
 		FrontURL:    "{{urlPath}}",
 	})
 	operateList = append(operateList, RoleRight{
 		RightName:   "{{ctrlName}}-update",
-		RightAction: "[PUT]{{urlPath}}",
+		RightAction: "[PUT]/{{urlPath}}",
 		FrontURL:    "{{urlPath}}",
 	})
 	operateList = append(operateList, RoleRight{
 		RightName:   "{{ctrlName}}-delete",
-		RightAction: "[DELETE]{{urlPath}}",
+		RightAction: "[DELETE]/{{urlPath}}",
 		FrontURL:    "{{urlPath}}",
 	})
+`
+	menuListTPL = `
+              {
+                  path: '/{{urlPath}}/index',
+                  component: name => require(['../components/{{urlPath}}/Index'], name),
+              },
 `
 )
