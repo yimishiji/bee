@@ -1095,7 +1095,6 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 
 		var index int32 = 0
 		for _, col := range tb.Columns {
-			fieldName := col.Name
 			fieldComment := col.Tag.Comment
 			if fieldComment == "" {
 				fieldComment = col.Name
