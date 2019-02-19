@@ -963,11 +963,11 @@ func writeFilterFiles(tables []*Table, cPath string, pkgPath string) {
 		var validArr []string
 		var isUserTime bool = false
 		for _, col := range tb.Columns {
-			if col.Tag.Null == false {
+			if col.Tag.Null == false && col.Tag.Column != tb.Pk {
 				fileStr := strings.Replace(FilterValidRuleTPL, "{{validFunc}}", "Required", -1)
 				fileStr = strings.Replace(fileStr, "{{colName}}", col.Name, -1)
 				fileStr = strings.Replace(fileStr, "{{colColumn}}", col.Tag.Column, -1)
-				fileStr = strings.Replace(fileStr, "{{msg}}", col.Tag.Column+"is now allow null", -1)
+				fileStr = strings.Replace(fileStr, "{{msg}}", col.Tag.Column+" is required", -1)
 				validArr = append(validArr, fileStr)
 			}
 		}
@@ -1115,24 +1115,22 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 			tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
 			selectOptionsArr = append(selectOptionsArr, tlpstr)
 
-			col.Tag.Pk = col.Name == utils.CamelCase(tb.Pk)
-
 			// Add index page list column
-			if col.Tag.Pk != true && col.Name != "CreatedAt" && col.Name != "CreatedBy" && col.Name != "UpdatedAt" && col.Name != "UpdatedBy" {
-				tlpstr = strings.Replace(VueCreateFieldComponentTPL, "{{fieldName}}", fieldName, -1)
+			if tb.Pk != col.Tag.Column && col.Name != "CreatedAt" && col.Name != "CreatedBy" && col.Name != "UpdatedAt" && col.Name != "UpdatedBy" {
+				tlpstr = strings.Replace(VueCreateFieldComponentTPL, "{{fieldName}}", col.Tag.Column, -1)
 				tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
 				createFromFieldArr = append(createFromFieldArr, tlpstr)
 			}
 
-			if col.Tag.Pk != true {
+			if tb.Pk != col.Tag.Column {
 
 				// Add index page customFieldEdit
-				tlpstrField := strings.Replace(VueCreateCustomFormComponentTPL, "{{fieldName}}", fieldName, -1)
+				tlpstrField := strings.Replace(VueCreateCustomFormComponentTPL, "{{fieldName}}", col.Tag.Column, -1)
 				tlpstrField = strings.Replace(tlpstrField, "{{fieldDefault}}", col.Tag.Default, -1)
 				customFieldEditArr = append(customFieldEditArr, tlpstrField)
 
 				// Add index page customRules
-				tlpstr = strings.Replace(VueCreateCustomRulesComponentTPL, "{{fieldName}}", fieldName, -1)
+				tlpstr = strings.Replace(VueCreateCustomRulesComponentTPL, "{{fieldName}}", col.Tag.Column, -1)
 				tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
 				if col.Tag.Null != true {
 					tlpstr = strings.Replace(tlpstr, "{{required}}", "true", -1)
@@ -1157,9 +1155,9 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 			}
 
 			// Add index page list column
-			tlpstr = strings.Replace(vueEditComponentFromItemTPL, "{{fieldName}}", fieldName, -1)
+			tlpstr = strings.Replace(vueEditComponentFromItemTPL, "{{fieldName}}", col.Tag.Column, -1)
 			tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
-			if col.Tag.Pk == true || col.Name == "CreatedAt" || col.Name == "CreatedBy" || col.Name == "UpdatedAt" || col.Name == "UpdatedBy" {
+			if tb.Pk == col.Tag.Column || col.Name == "CreatedAt" || col.Name == "CreatedBy" || col.Name == "UpdatedAt" || col.Name == "UpdatedBy" {
 				tlpstr = strings.Replace(tlpstr, "{{disabled}}", "disabled", -1)
 			} else {
 				tlpstr = strings.Replace(tlpstr, "{{disabled}}", "", -1)
@@ -1167,7 +1165,7 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 			editfromFieldArr = append(editfromFieldArr, tlpstr)
 
 			// Add index page list column
-			tlpstr = strings.Replace(vueEditComponentSubmitItemTPL, "{{fieldName}}", fieldName, -1)
+			tlpstr = strings.Replace(vueEditComponentSubmitItemTPL, "{{fieldName}}", col.Tag.Column, -1)
 			editSubmitItemsArr = append(editSubmitItemsArr, tlpstr)
 			index++
 		}
