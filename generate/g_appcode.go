@@ -828,6 +828,7 @@ func writeModelFiles(tables []*Table, mPath string) {
 func writeControllerFiles(tables []*Table, cPath string, pkgPath string) {
 	w := colors.NewColorWriter(os.Stdout)
 
+	var operateListArr []string
 	for _, tb := range tables {
 		if tb.Pk == "" {
 			continue
@@ -918,9 +919,10 @@ func writeControllerFiles(tables []*Table, cPath string, pkgPath string) {
 
 		fileStr = strings.Replace(operateListTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
 		fileStr = strings.Replace(fileStr, "{{urlPath}}", tb.Name, -1)
-		notirceMsgArr = append(notirceMsgArr, "add to operate list"+fileStr)
+		operateListArr = append(operateListArr, fileStr)
 
 	}
+	notirceMsgArr = append(notirceMsgArr, "add to operate list:\n"+strings.Join(operateListArr, ""))
 }
 
 // writeControllerFiles generates controller files
@@ -1040,6 +1042,9 @@ func writeRouterFile(tables []*Table, rPath string, pkgPath string) {
 // writeControllerFiles generates controller files
 func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 	w := colors.NewColorWriter(os.Stdout)
+
+	var vueRuleArr []string
+	var vueMenuArr []string
 
 	for _, tb := range tables {
 		if tb.Pk == "" {
@@ -1290,11 +1295,18 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpathIndex, "\x1b[0m")
 		utils.FormatSourceCode(fpathIndex)
 
+		//vue 路由规则
+		fileStr = strings.Replace(vueRuleTPL, "{{urlPath}}", tb.Name, -1)
+		vueRuleArr = append(vueRuleArr, fileStr)
+
 		//vue 菜单
 		fileStr = strings.Replace(menuListTPL, "{{urlPath}}", tb.Name, -1)
-		notirceMsgArr = append(notirceMsgArr, "add to vue menu \n"+fileStr)
-
+		fileStr = strings.Replace(fileStr, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
+		vueMenuArr = append(vueMenuArr, fileStr)
 	}
+	notirceMsgArr = append(notirceMsgArr, "add to vue vue/src/router/index.js \n"+strings.Join(vueRuleArr, ""))
+	notirceMsgArr = append(notirceMsgArr, "add to vue menu \n"+strings.Join(vueMenuArr, ""))
+
 }
 
 func isSQLTemporalType(t string) bool {
@@ -2248,10 +2260,13 @@ func init() {
 		FrontURL:    "{{urlPath}}",
 	})
 `
-	menuListTPL = `
+	vueRuleTPL = `
               {
                   path: '/{{urlPath}}/index',
                   component: name => require(['../components/{{urlPath}}/Index'], name),
               },
+`
+	menuListTPL = `
+                    {"name":"{{ctrlName}}","url":"/{{urlPath}}/index","icon":"bars"},
 `
 )
