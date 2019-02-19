@@ -209,16 +209,16 @@ func (col *Column) String() string {
 func (tag *OrmTag) String() string {
 	var ormOptions []string
 	if tag.Column != "" {
-		ormOptions = append(ormOptions, fmt.Sprintf("column(%s)", tag.Column))
+		ormOptions = append(ormOptions, fmt.Sprintf("column:%s", tag.Column))
 	}
 	if tag.Auto {
 		ormOptions = append(ormOptions, "auto")
 	}
 	if tag.Size != "" {
-		ormOptions = append(ormOptions, fmt.Sprintf("size(%s)", tag.Size))
+		ormOptions = append(ormOptions, fmt.Sprintf("size:%s", tag.Size))
 	}
 	if tag.Type != "" {
-		ormOptions = append(ormOptions, fmt.Sprintf("type(%s)", tag.Type))
+		ormOptions = append(ormOptions, fmt.Sprintf("type:%s", tag.Type))
 	}
 	if tag.Null {
 		ormOptions = append(ormOptions, "null")
@@ -230,22 +230,22 @@ func (tag *OrmTag) String() string {
 		ormOptions = append(ormOptions, "auto_now_add")
 	}
 	if tag.Decimals != "" {
-		ormOptions = append(ormOptions, fmt.Sprintf("digits(%s);decimals(%s)", tag.Digits, tag.Decimals))
+		ormOptions = append(ormOptions, fmt.Sprintf("digits:%s;decimals:%s", tag.Digits, tag.Decimals))
 	}
 	if tag.RelFk {
-		ormOptions = append(ormOptions, "rel(fk)")
+		ormOptions = append(ormOptions, "rel:fk")
 	}
 	if tag.RelOne {
-		ormOptions = append(ormOptions, "rel(one)")
+		ormOptions = append(ormOptions, "rel:one")
 	}
 	if tag.ReverseOne {
-		ormOptions = append(ormOptions, "reverse(one)")
+		ormOptions = append(ormOptions, "reverse:one")
 	}
 	if tag.ReverseMany {
-		ormOptions = append(ormOptions, "reverse(many)")
+		ormOptions = append(ormOptions, "reverse:many")
 	}
 	if tag.RelM2M {
-		ormOptions = append(ormOptions, "rel(m2m)")
+		ormOptions = append(ormOptions, "rel:m2m")
 	}
 	if tag.Pk {
 		ormOptions = append(ormOptions, "pk")
@@ -254,16 +254,15 @@ func (tag *OrmTag) String() string {
 		ormOptions = append(ormOptions, "unique")
 	}
 	if tag.Default != "" {
-		ormOptions = append(ormOptions, fmt.Sprintf("default(%s)", tag.Default))
+		ormOptions = append(ormOptions, fmt.Sprintf("default:%s", tag.Default))
 	}
-
 	if len(ormOptions) == 0 {
 		return ""
 	}
 	if tag.Comment != "" {
-		return fmt.Sprintf("`orm:\"%s\" description:\"%s\"`", strings.Join(ormOptions, ";"), tag.Comment)
+		return fmt.Sprintf("`json:\"%s\" gorm:\"%s\" description:\"%s\"`", utils.CamelCase(tag.Column), strings.Join(ormOptions, ";"), tag.Comment)
 	}
-	return fmt.Sprintf("`orm:\"%s\"`", strings.Join(ormOptions, ";"))
+	return fmt.Sprintf("`json:\"%s\" gorm:\"%s\"`", utils.CamelCase(tag.Column), strings.Join(ormOptions, ";"))
 }
 
 func GenerateAppcode(driver, connStr, level, tables, currpath string) {
