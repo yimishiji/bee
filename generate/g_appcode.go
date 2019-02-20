@@ -2086,7 +2086,7 @@ func init() {
           submitForm: function () {
 
               let params = this.customForm;
-               {{createSubmitDataFix}}
+              {{createSubmitDataFix}}
               this.$store.state.loading     = true;
               this.$http.post(createApi, this.$qs.parse(params)).then(resp=> {
                   this.$store.state.loading = false;
