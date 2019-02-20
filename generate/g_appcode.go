@@ -1177,10 +1177,12 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 			}
 			editfromFieldArr = append(editfromFieldArr, tlpstr)
 
-			// Add index page list column
-			tlpstr = strings.Replace(vueEditComponentSubmitItemTPL, "{{fieldName}}", col.Tag.Column, -1)
-			editSubmitItemsArr = append(editSubmitItemsArr, tlpstr)
-			index++
+			// Add eidt page submit column
+			if tb.Pk != col.Tag.Column && col.Name != "CreatedAt" && col.Name != "CreatedBy" && col.Name != "UpdatedAt" && col.Name != "UpdatedBy" {
+				tlpstr = strings.Replace(vueEditComponentSubmitItemTPL, "{{fieldName}}", col.Tag.Column, -1)
+				editSubmitItemsArr = append(editSubmitItemsArr, tlpstr)
+				index++
+			}
 		}
 
 		listColumns := strings.Join(listColumnsArr, "")
