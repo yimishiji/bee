@@ -862,43 +862,49 @@ func writeControllerFiles(tables []*Table, cPath string, pkgPath string) {
 		var updateAutoArr []string
 		var pkgListArr []string
 		var isUserTime bool = false
+		var isUserStrconv bool = false
 		for _, col := range tb.Columns {
 			if col.Name == "CreatedAt" {
-				if col.Tag.Type == "datetime" {
+				if col.Type == "datetime" {
 					createAutoArr = append(createAutoArr, "v.CreatedAt = time.Now()\n")
-				} else if col.Tag.Type == "int" {
-					createAutoArr = append(createAutoArr, "v.CreatedAt = time.Now().Unix()\n")
+				} else if col.Type == "int" {
+					createAutoArr = append(createAutoArr, "v.CreatedAt = int(time.Now().Unix())\n")
 				}
 				isUserTime = true
 			}
 			if col.Name == "CreatedBy" {
-				if col.Tag.Type == "int" {
-					createAutoArr = append(createAutoArr, "//v.CreatedBy = strconv.Atoi(c.User.GetId())\n")
+				if col.Type == "int" {
+					createAutoArr = append(createAutoArr, "v.CreatedBy,_ = strconv.Atoi(c.User.GetId())\n")
+					isUserStrconv = true
 				} else {
-					createAutoArr = append(createAutoArr, "//v.CreatedBy = c.User.GetId()\n")
+					createAutoArr = append(createAutoArr, "v.CreatedBy = c.User.GetId()\n")
 				}
 			}
 			if col.Name == "UpdatedAt" {
-				if col.Tag.Type == "datetime" {
+				if col.Type == "datetime" {
 					updateAutoArr = append(updateAutoArr, "v.UpdatedAt = time.Now()\n")
 					createAutoArr = append(createAutoArr, "v.UpdatedAt = time.Now()\n")
-				} else if col.Tag.Type == "int" {
-					updateAutoArr = append(updateAutoArr, "v.UpdatedAt = time.Now().Unix()\n")
-					createAutoArr = append(createAutoArr, "v.UpdatedAt = time.Now().Unix()\n")
+				} else if col.Type == "int" {
+					updateAutoArr = append(updateAutoArr, "v.UpdatedAt = int(time.Now().Unix())\n")
+					createAutoArr = append(createAutoArr, "v.UpdatedAt = int(time.Now().Unix())\n")
 				}
 				isUserTime = true
 			}
 			if col.Name == "UpdatedBy" {
-				if col.Tag.Type == "int" {
-					updateAutoArr = append(updateAutoArr, "//v.UpdatedBy = strconv.Atoi(c.User.GetId())\n")
+				if col.Type == "int" {
+					updateAutoArr = append(updateAutoArr, "v.UpdatedBy,_ = strconv.Atoi(c.User.GetId())\n")
+					isUserStrconv = true
 				} else {
-					updateAutoArr = append(updateAutoArr, "//v.UpdatedBy = c.User.GetId()\n")
+					updateAutoArr = append(updateAutoArr, "v.UpdatedBy = c.User.GetId()\n")
 				}
 			}
 		}
 
 		if isUserTime {
 			pkgListArr = append(pkgListArr, "\"time\"\n")
+		}
+		if isUserStrconv {
+			pkgListArr = append(pkgListArr, "\"strconv\"\n")
 		}
 
 		createAuto := strings.Join(createAutoArr, "")
@@ -1141,7 +1147,15 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 				} else {
 					tlpstr = strings.Replace(tlpstr, "length: {{length}},", "", -1)
 				}
-				tlpstr = strings.Replace(tlpstr, "{{type}}", col.Tag.Type, -1)
+
+				jsValidatorType := ""
+				if col.Type == "int" {
+					jsValidatorType = "number"
+				} else if col.Type == "int8" {
+					jsValidatorType = "integer"
+				}
+				tlpstr = strings.Replace(tlpstr, "{{type}}", jsValidatorType, -1)
+
 				customRulesEditArr = append(customRulesEditArr, tlpstr)
 
 				if col.Name != "CreatedAt" && col.Name != "CreatedBy" && col.Name != "UpdatedAt" && col.Name != "UpdatedBy" {
