@@ -967,6 +967,7 @@ func writeFilterFiles(tables []*Table, cPath string, pkgPath string) {
 
 		var pkgListArr []string
 		var validArr []string
+		var inpuTfieldListArr []string
 		var isUserTime bool = false
 		for _, col := range tb.Columns {
 			if col.Tag.Null == false && col.Tag.Column != tb.Pk {
@@ -976,6 +977,12 @@ func writeFilterFiles(tables []*Table, cPath string, pkgPath string) {
 				fileStr = strings.Replace(fileStr, "{{msg}}", col.Tag.Column+" is required", -1)
 				validArr = append(validArr, fileStr)
 			}
+
+			if tb.Pk != col.Tag.Column && col.Name != "CreatedAt" && col.Name != "CreatedBy" && col.Name != "UpdatedAt" && col.Name != "UpdatedBy" {
+
+				structfield := fmt.Sprintf("%s %s %s", col.Name, col.Type, col.Tag.String())
+				inpuTfieldListArr = append(inpuTfieldListArr, structfield)
+			}
 		}
 
 		if isUserTime {
@@ -984,11 +991,13 @@ func writeFilterFiles(tables []*Table, cPath string, pkgPath string) {
 
 		pkgList := strings.Join(pkgListArr, "")
 		validStr := strings.Join(validArr, "")
+		inpuTfieldList := strings.Join(inpuTfieldListArr, "\n	")
 
 		fileStr := strings.Replace(FilterTPL, "{{modelName}}", utils.CamelCase(tb.Name), -1)
 		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
 		fileStr = strings.Replace(fileStr, "{{pkg}}", pkgList, -1)
 		fileStr = strings.Replace(fileStr, "{{ValidRuleList}}", validStr, -1)
+		fileStr = strings.Replace(fileStr, "{{inpuTfieldList}}", inpuTfieldList, -1)
 
 		if _, err := f.WriteString(fileStr); err != nil {
 			beeLogger.Log.Fatalf("Could not write filter file to '%s': %s", fpath, err)
@@ -1098,6 +1107,7 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		var customRulesEditArr []string
 		var editfromFieldArr []string
 		var editSubmitItemsArr []string
+		var createSubmitDataFixArr []string
 
 		var index int32 = 0
 		for _, col := range tb.Columns {
@@ -1180,9 +1190,17 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 			// Add eidt page submit column
 			if tb.Pk != col.Tag.Column && col.Name != "CreatedAt" && col.Name != "CreatedBy" && col.Name != "UpdatedAt" && col.Name != "UpdatedBy" {
 				tlpstr = strings.Replace(vueEditComponentSubmitItemTPL, "{{fieldName}}", col.Tag.Column, -1)
+				if col.Type == "int" || col.Type == "int8" {
+					tlpstr = strings.Replace(tlpstr, "this.customForm."+col.Tag.Column, "parseInt(this.customForm."+col.Tag.Column+")", -1)
+					createSubmitDataFixArr = append(createSubmitDataFixArr, "params['"+col.Tag.Column+"'] = parseInt(params['"+col.Tag.Column+"']);\n")
+				} else if col.Type == "float" {
+					tlpstr = strings.Replace(tlpstr, "this.customForm."+col.Tag.Column, "parseFloat(this.customForm."+col.Tag.Column+")", -1)
+					createSubmitDataFixArr = append(createSubmitDataFixArr, "params['"+col.Tag.Column+"'] = parseFloat(params['"+col.Tag.Column+"']);\n")
+				}
 				editSubmitItemsArr = append(editSubmitItemsArr, tlpstr)
-				index++
 			}
+
+			index++
 		}
 
 		listColumns := strings.Join(listColumnsArr, "")
@@ -1195,6 +1213,7 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		customRulesEdit := strings.Join(customRulesEditArr, "")
 		editfromField := strings.Join(editfromFieldArr, "")
 		editSubmitItems := strings.Join(editSubmitItemsArr, "")
+		createSubmitDataFix := strings.Join(createSubmitDataFixArr, "\n              ")
 
 		fileStr := strings.Replace(VueIndexTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
 		fileStr = strings.Replace(fileStr, "{{tbName}}", tb.Name, -1)
@@ -1241,6 +1260,7 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		fileStr = strings.Replace(fileStr, "{{customField}}", customFieldCreate, -1)
 		fileStr = strings.Replace(fileStr, "{{customRules}}", customRulesCreate, -1)
 		fileStr = strings.Replace(fileStr, "{{pageUrl}}", pageUrl, -1)
+		fileStr = strings.Replace(fileStr, "{{createSubmitDataFix}}", createSubmitDataFix, -1)
 		if _, err := f.WriteString(fileStr); err != nil {
 			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpathIndex, err)
 		}
@@ -1450,10 +1470,9 @@ func Add{{modelName}}(m *{{modelName}}) (err error) {
 
 // Get{{modelName}}ById retrieves {{modelName}} by Id. Returns error if
 // Id doesn't exist
-func Get{{modelName}}ById(id int) (v *{{modelName}}, err error) {
-    l := new({{modelName}})
-    res := db.Conn.Where(id).First(&l)
-    return l, res.Error
+func Get{{modelName}}ById(id int) (v {{modelName}}, err error) {
+    res := db.Conn.Where(id).First(&v)
+    return v, res.Error
 }
 
 // GetAll{{modelName}} retrieves all {{modelName}} matches certain condition. Returns empty list if
@@ -1491,15 +1510,7 @@ func GetAll{{modelName}}(query map[string]string, fields []string, sortFields []
 
 // Update{{modelName}} updates {{modelName}} by Id and returns error if
 // the record to be updated doesn't exist
-func Update{{modelName}}ById(m *{{modelName}}) (err error) {
-	v := new({{modelName}})
-
-	// ascertain id exists in the database
-    err = db.Conn.Where(m.Id).First(&v).Error
-	if err != nil {
-		return err
-	}
-
+func Update{{modelName}}(m *{{modelName}}) (err error) {
 	return db.Conn.Save(m).Error
 }
 
@@ -1531,6 +1542,7 @@ import (
 	{{pkg}}	
 
     "github.com/yimishiji/bee/pkg/base"
+    "github.com/yimishiji/bee/pkg/structs"
 )
 
 // {{ctrlName}}Controller operations for {{ctrlName}}
@@ -1561,8 +1573,9 @@ func (c *{{ctrlName}}Controller) Prepare() {
 // @Failure 403 body is empty
 // @router / [post]
 func (c *{{ctrlName}}Controller) Post() {
-    if v, err := c.filter.Get{{ctrlName}}Post(); err == nil {
-
+    var v models.{{ctrlName}}
+    if f, err := c.filter.Get{{ctrlName}}Post(); err == nil {
+        structs.StructMarge(&v, f)
 		{{createAuto}}
 		if err := models.Add{{ctrlName}}(&v); err == nil {
 			c.Ctx.Output.SetStatus(201)
@@ -1633,11 +1646,15 @@ func (c *{{ctrlName}}Controller) GetAll() {
 // @router /:id [put]
 func (c *{{ctrlName}}Controller) Put() {
     id := c.filter.GetId(":id")
-	v := models.{{ctrlName}}{Id: id}
-    if v, err := c.filter.Get{{ctrlName}}Put(v); err == nil {
+    v, err := models.Get{{ctrlName}}ById(id)
+    if err != nil {
+        c.Data["json"] = c.Resp(base.ApiCode_VALIDATE_ERROR, "invalid:"+err.Error(), err.Error())
+    }
 
+    if f, err := c.filter.Get{{ctrlName}}Put(); err == nil {
+        structs.StructMarge(&v, f)
 		{{updateAuto}}
-		if err := models.Update{{ctrlName}}ById(&v); err == nil {
+		if err := models.Update{{ctrlName}}(&v); err == nil {
 			c.Data["json"] = c.Resp(base.ApiCode_SUCC, "ok")
 		} else {
 			c.Data["json"] = c.Resp(base.ApiCode_SYS_ERROR, "system error", err.Error())
@@ -1669,7 +1686,6 @@ func (c *{{ctrlName}}Controller) Delete() {
 package filters
 
 import (
-	"bpm-api/models"
 	"encoding/json"
 	"errors"
 
@@ -1690,34 +1706,44 @@ func New{{modelName}}Filter(r *context.BeegoInput) *{{modelName}}Filter {
 	}
 }
 
+//post提交 数据格式
+type {{modelName}}Post struct {
+    {{inpuTfieldList}}
+}
+
 //获取Post接交数据
-func (this *{{modelName}}Filter) Get{{modelName}}Post() (model models.{{modelName}}, err error) {
-	var v models.{{modelName}}
-	return this.get{{modelName}}(v)
-}
-
-//获取put提交数据
-func (this *{{modelName}}Filter) Get{{modelName}}Put(v models.{{modelName}}) (model models.{{modelName}}, err error) {
-	return this.get{{modelName}}(v)
-}
-
-//数据过滤
-func (this *{{modelName}}Filter) get{{modelName}}(v models.{{modelName}}) (model models.{{modelName}}, err error) {
-
+func (this *{{modelName}}Filter) Get{{modelName}}Post() (v {{modelName}}Post, err error) {
 	if err := json.Unmarshal(this.Input.RequestBody, &v); err == nil {
-
 		//验证器
 		valid := validation.Validation{}{{ValidRuleList}}
 		if valid.HasErrors() {
 			err = errors.New(valid.Errors[0].String())
 			return v, err
 		}
-
 		//自定义验证方法
 		//if filters.InStingArr(v.Type, []string{"orders", "goods", "users"}) == false {
 		//	return v, errors.New("type is not enable")
 		//}
+		return v, nil
+	} else {
+		return v, err
+	}
+}
 
+//Put提交 数据格式, 每个表单提交需针对性定义一份结构体,
+type {{modelName}}Put struct {
+     {{inpuTfieldList}}
+}
+
+//获取put提交数据
+func (this *{{modelName}}Filter) Get{{modelName}}Put() (v {{modelName}}Put, err error) {
+	if err := json.Unmarshal(this.Input.RequestBody, &v); err == nil {
+		//验证器
+		valid := validation.Validation{}{{ValidRuleList}}
+		if valid.HasErrors() {
+			err = errors.New(valid.Errors[0].String())
+			return v, err
+		}
 		return v, nil
 	} else {
 		return v, err
@@ -1798,7 +1824,7 @@ func init() {
                             <v-tooltip content="编辑" :placement="props.index==0 ? 'bottom' : 'top'" ><v-icon type="edit"></v-icon></v-tooltip>
                         </span>
                         <v-popconfirm :placement="props.index==0 ? 'bottom' : 'top'" title=" 确定删除吗?" @confirm="del(props.item)">
-                            <v-tooltip content="删除标签" :placement="props.index==0 ? 'bottom' : 'top'" ><i class="fa fa-trash-o "></i></v-tooltip>
+                            <v-tooltip content="删除" :placement="props.index==0 ? 'bottom' : 'top'" ><i class="fa fa-trash-o "></i></v-tooltip>
                         </v-popconfirm>
                     </div>
 
@@ -2060,7 +2086,7 @@ func init() {
           submitForm: function () {
 
               let params = this.customForm;
-
+               {{createSubmitDataFix}}
               this.$store.state.loading     = true;
               this.$http.post(createApi, this.$qs.parse(params)).then(resp=> {
                   this.$store.state.loading = false;
