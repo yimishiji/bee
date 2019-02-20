@@ -1938,9 +1938,6 @@ func init() {
                 this.$store.state.loading     = true;
                 this.$http.delete(DeleteAPI+"/"+item.{{tbPk}}).then(resp=> {
                     this.$store.state.loading = false;
-                    if(resp.data.debug){
-                        this.$store.state.toolbarIndex =  domainHost+resp.data.debug.url;
-                    }
                     if (resp.data.status == 1) {
                         this.$notification.success({
                             message    : '提示',
@@ -2186,9 +2183,6 @@ func init() {
                               });
                               this.ruleCancel();
                               this.$emit('refreshList');
-                          }
-                          if(resp.data.debug){
-                              this.$store.state.toolbarIndex =  domainHost+resp.data.debug.url;
                           }
                       });
                   }else{
