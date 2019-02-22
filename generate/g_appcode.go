@@ -1109,6 +1109,7 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		var editfromFieldArr []string
 		var editSubmitItemsArr []string
 		var createSubmitDataFixArr []string
+		var indexModifyRowsArr []string
 
 		var index int32 = 0
 		for _, col := range tb.Columns {
@@ -1136,6 +1137,11 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 				tlpstr = strings.Replace(VueCreateFieldComponentTPL, "{{fieldName}}", col.Tag.Column, -1)
 				tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
 				createFromFieldArr = append(createFromFieldArr, tlpstr)
+			}
+
+			// add index row modify
+			if (col.Name == "CreatedAt" || col.Name == "UpdatedAt") && col.Type == "int" {
+				indexModifyRowsArr = append(indexModifyRowsArr, "\n                            list[i]."+col.Tag.Column+" = this.format(list[i]."+col.Tag.Column+");")
 			}
 
 			if tb.Pk != col.Tag.Column {
@@ -1215,6 +1221,7 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		editfromField := strings.Join(editfromFieldArr, "")
 		editSubmitItems := strings.Join(editSubmitItemsArr, "")
 		createSubmitDataFix := strings.Join(createSubmitDataFixArr, "\n              ")
+		indexModifyRows := strings.Join(indexModifyRowsArr, "")
 
 		fileStr := strings.Replace(VueIndexTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
 		fileStr = strings.Replace(fileStr, "{{tbName}}", tb.Name, -1)
@@ -1224,6 +1231,12 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		fileStr = strings.Replace(fileStr, "{{listColumnShow}}", listColumnShow, -1)
 		fileStr = strings.Replace(fileStr, "{{selectOptions}}", selectOptions, -1)
 		fileStr = strings.Replace(fileStr, "{{pageUrl}}", pageUrl, -1)
+		if len(indexModifyRowsArr) > 0 {
+			colModifyStr := strings.Replace(VueIndexColModifyTPL, "{{indexModifyRows}}", indexModifyRows, -1)
+			fileStr = strings.Replace(fileStr, "{{colModifyStr}}", colModifyStr, -1)
+		} else {
+			fileStr = strings.Replace(fileStr, "{{colModifyStr}}", "", -1)
+		}
 
 		if _, err := f.WriteString(fileStr); err != nil {
 			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpathIndex, err)
@@ -1904,11 +1917,7 @@ func init() {
                     if (resp.data.status == 1){
                         var result = resp.data.results[0];
                         let list = result.list? result.list : [];
-
-                        //for (let i in list) {
-                        //    list[i].createAt = this.format(list[i].createAt);
-                        //}
-
+                        {{colModifyStr}}
                         let listdata = {};
                         listdata['result'] = list;
                         listdata['totalCount'] = Number(result.totalCount);
@@ -2038,6 +2047,10 @@ func init() {
         padding-right: 10px;
     }
 </style>
+`
+	VueIndexColModifyTPL = `
+                        for (let i in list) {{{indexModifyRows}}
+                        }
 `
 	VueIndexListColumnTPL = `
                     {title: "{{fieldComment}}", field: '{{fieldName}}', show: true},`
