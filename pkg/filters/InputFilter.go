@@ -124,7 +124,7 @@ func (c *InputFilter) GetInt64(key string, def ...int64) (int64, error) {
 
 //获取paramsKeyId
 func (c *InputFilter) GetId(key string) int {
-	idStr := c.Input.Param(":id")
+	idStr := c.Input.Param(key)
 	id, _ := strconv.Atoi(idStr)
 	return id
 }
