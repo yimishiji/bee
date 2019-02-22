@@ -59,6 +59,10 @@ func NewGormQuery(query map[string]string) *gorm.DB {
 				end, _ := strconv.Atoi(ranges[1])
 				gorm = gorm.Where(k+" BETWEEN ? AND ?", star, end)
 			}
+		} else if strings.HasPrefix(v, "in-") {
+			v = strings.Replace(v, "in-", "", 1)
+			ranges := strings.SplitN(v, "-", -1)
+			gorm = gorm.Where(k+" in (?)", ranges)
 		} else {
 			gorm = gorm.Where(k+" = ?", v)
 		}
