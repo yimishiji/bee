@@ -1144,12 +1144,12 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 				indexModifyRowsArr = append(indexModifyRowsArr, "\n                            list[i]."+col.Tag.Column+" = this.format(list[i]."+col.Tag.Column+");")
 			}
 
-			if tb.Pk != col.Tag.Column {
+			// Add index page customFieldEdit
+			tlpstrField := strings.Replace(VueCreateCustomFormComponentTPL, "{{fieldName}}", col.Tag.Column, -1)
+			tlpstrField = strings.Replace(tlpstrField, "{{fieldDefault}}", col.Tag.Default, -1)
+			customFieldEditArr = append(customFieldEditArr, tlpstrField)
 
-				// Add index page customFieldEdit
-				tlpstrField := strings.Replace(VueCreateCustomFormComponentTPL, "{{fieldName}}", col.Tag.Column, -1)
-				tlpstrField = strings.Replace(tlpstrField, "{{fieldDefault}}", col.Tag.Default, -1)
-				customFieldEditArr = append(customFieldEditArr, tlpstrField)
+			if tb.Pk != col.Tag.Column {
 
 				// Add index page customRules
 				tlpstr = strings.Replace(VueCreateCustomRulesComponentTPL, "{{fieldName}}", col.Tag.Column, -1)
