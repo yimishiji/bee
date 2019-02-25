@@ -2241,8 +2241,8 @@ func init() {
     <v-modal class="model" title="显示" :width='220' :visible="show" @cancel="ruleCancel">
         <v-form direction="horizontal">
             <ul>
-                <template v-for="items in columnsSetting">
-                   <li> <v-checkbox v-model="items.show" :true-value="true" :false-value="false">{{items.title}}</v-checkbox></li>
+                <template v-for="item in columnsSetting">
+                   <li> <v-checkbox v-model="item.show" :true-value="true" :false-value="false">{{item.title}}</v-checkbox></li>
                 </template>
             </ul>
 
