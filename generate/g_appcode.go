@@ -1589,7 +1589,7 @@ func (c *{{ctrlName}}Controller) Prepare() {
 func (c *{{ctrlName}}Controller) Post() {
     var v models.{{ctrlName}}
     if f, err := c.filter.Get{{ctrlName}}Post(); err == nil {
-        structs.StructMarge(&v, f)
+        structs.StructMerge(&v, f)
 		{{createAuto}}
 		if err := models.Add{{ctrlName}}(&v); err == nil {
 			c.Ctx.Output.SetStatus(201)
@@ -1666,7 +1666,7 @@ func (c *{{ctrlName}}Controller) Put() {
     }
 
     if f, err := c.filter.Get{{ctrlName}}Put(); err == nil {
-        structs.StructMarge(&v, f)
+        structs.StructMerge(&v, f)
 		{{updateAuto}}
 		if err := models.Update{{ctrlName}}(&v); err == nil {
 			c.Data["json"] = c.Resp(base.ApiCode_SUCC, "ok")
