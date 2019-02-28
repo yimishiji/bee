@@ -2229,7 +2229,7 @@ func init() {
 </style>
 `
 	vueEditComponentFromItemTPL = `
-            <v-form-item label="{{fieldComment}}" :label-col="labelCol" :wrapper-col="wrapperCol" prop="title" has-feedback>
+            <v-form-item label="{{fieldComment}}" :label-col="labelCol" :wrapper-col="wrapperCol" prop="{{fieldName}}" has-feedback>
                 <v-input v-if="updateMode"  v-model="customForm.{{fieldName}}" size="large" {{disabled}}></v-input>
                 <span v-if="!updateMode"  class="ant-form-text">{{customForm.{{fieldName}}}}</span>
             </v-form-item>
