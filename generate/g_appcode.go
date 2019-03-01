@@ -1167,9 +1167,9 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 
 				jsValidatorType := ""
 				if col.Type == "int" {
-					jsValidatorType = "number"
+					//jsValidatorType = "number"
 				} else if col.Type == "int8" {
-					jsValidatorType = "integer"
+					//jsValidatorType = "integer"
 				}
 				tlpstr = strings.Replace(tlpstr, "{{type}}", jsValidatorType, -1)
 
