@@ -1199,10 +1199,10 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 				tlpstr = strings.Replace(vueEditComponentSubmitItemTPL, "{{fieldName}}", col.Tag.Column, -1)
 				if col.Type == "int" || col.Type == "int8" {
 					tlpstr = strings.Replace(tlpstr, "this.customForm."+col.Tag.Column, "parseInt(this.customForm."+col.Tag.Column+")", -1)
-					createSubmitDataFixArr = append(createSubmitDataFixArr, "params['"+col.Tag.Column+"'] = parseInt(params['"+col.Tag.Column+"']);\n")
+					createSubmitDataFixArr = append(createSubmitDataFixArr, "\n			      	  params['"+col.Tag.Column+"'] = parseInt(params['"+col.Tag.Column+"']);")
 				} else if col.Type == "float" {
 					tlpstr = strings.Replace(tlpstr, "this.customForm."+col.Tag.Column, "parseFloat(this.customForm."+col.Tag.Column+")", -1)
-					createSubmitDataFixArr = append(createSubmitDataFixArr, "params['"+col.Tag.Column+"'] = parseFloat(params['"+col.Tag.Column+"']);\n")
+					createSubmitDataFixArr = append(createSubmitDataFixArr, "	\n				  	  params['"+col.Tag.Column+"'] = parseFloat(params['"+col.Tag.Column+"']);")
 				}
 				editSubmitItemsArr = append(editSubmitItemsArr, tlpstr)
 			}
@@ -1220,7 +1220,7 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		customRulesEdit := strings.Join(customRulesEditArr, "")
 		editfromField := strings.Join(editfromFieldArr, "")
 		editSubmitItems := strings.Join(editSubmitItemsArr, "")
-		createSubmitDataFix := strings.Join(createSubmitDataFixArr, "\n              ")
+		createSubmitDataFix := strings.Join(createSubmitDataFixArr, "")
 		indexModifyRows := strings.Join(indexModifyRowsArr, "")
 
 		fileStr := strings.Replace(VueIndexTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
@@ -2062,7 +2062,7 @@ func init() {
             {{fromField}}
 
             <div class="layer-button">
-                <v-button type="primary" @click="submitForm" :loading="this.$store.state.loading">{{
+                <v-button type="primary" @click="submitForm('customRuleForm')" :loading="this.$store.state.loading">{{
                     this.$store.state.loading ?
                     "正在发送中" : "确认" }}
                 </v-button>
@@ -2094,21 +2094,23 @@ func init() {
           }
       },
       methods: {
-          submitForm: function () {
-
-              let params = this.customForm;
-              {{createSubmitDataFix}}
-              this.$store.state.loading     = true;
-              this.$http.post(createApi, this.$qs.parse(params)).then(resp=> {
-                  this.$store.state.loading = false;
-                  if (resp.data.status == 1) {
-                      this.$notification.success({
-                          message    : '提示',
-                          duration   : 2,
-                          description: "创建成功"
-                      });
-                      this.ruleCancel();
-                      this.$emit('refreshList');
+		  submitForm: function (formName) {
+              this.$refs[formName].validate((valid) => {
+                  if(valid) {
+					  let params = this.customForm;{{createSubmitDataFix}}
+					  this.$store.state.loading     = true;
+					  this.$http.post(createApi, this.$qs.parse(params)).then(resp=> {
+						  this.$store.state.loading = false;
+						  if (resp.data.status == 1) {
+							  this.$notification.success({
+								  message    : '提示',
+								  duration   : 2,
+								  description: "创建成功"
+							  });
+							  this.ruleCancel();
+							  this.$emit('refreshList');
+						  }
+					  });
                   }
               });
           },
@@ -2137,10 +2139,10 @@ func init() {
             </v-form-item>
 `
 	VueCreateCustomFormComponentTPL = `
-                  {{fieldName}}  : '{{fieldDefault}}',`
+                          {{fieldName}}  : '{{fieldDefault}}',`
 	VueCreateCustomRulesComponentTPL = `
                   {{fieldName}}:[
-                      {required: {{required}}, message: '请输入{{fieldComment}}', trigger: 'blur', length: {{length}}, type: "{{type}}"}
+                      {required: {{required}}, message: '请输入{{fieldComment}}', length: {{length}}, type: "{{type}}"}
                   ],`
 
 	vueEditComponentTPL = `<template>
