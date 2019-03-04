@@ -1853,8 +1853,8 @@ func init() {
 </template>
 
 <script>
-    import {domainHost,  hostName} from '../../config/api'
-    import { formatDate } from '../../common/date'
+    import {hostName} from '../../config/api'
+    import {formatDate} from '../../common/date'
     import createVue from './CreateComponent.vue'
     import editVue from './EditComponent.vue'
     import colSetting from './ColSettingComponent.vue'
