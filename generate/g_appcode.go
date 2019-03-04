@@ -1959,7 +1959,7 @@ func init() {
                 });
             },
             format:function(time){
-                let date = new Date(parseInt(time));
+                let date = new Date(parseInt(time)*1000);
                 return formatDate(date,'yyyy-MM-dd hh:mm:ss');
             },
             settingCol:function(){
