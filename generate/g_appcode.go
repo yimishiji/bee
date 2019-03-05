@@ -2162,7 +2162,7 @@ func init() {
             </v-form-item>
 `
 	VueCreateCustomFormComponentTPL = `
-                          {{fieldName}}  : '{{fieldDefault}}',`
+				  {{fieldName}}  : '{{fieldDefault}}',`
 	VueCreateCustomRulesComponentTPL = `
                   {{fieldName}}:[
                       {required: {{required}}, message: '请输入{{fieldComment}}', length: {{length}}, type: "{{type}}"}
