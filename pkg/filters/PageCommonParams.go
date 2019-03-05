@@ -9,4 +9,5 @@ type PageCommonParams struct {
 	Limits     int64
 	Offsets    int64
 	SortFields []string
+	Rels       []string
 }

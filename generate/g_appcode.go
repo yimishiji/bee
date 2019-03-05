@@ -907,6 +907,7 @@ func writeControllerFiles(tables []*Table, cPath string, pkgPath string) {
 		if isUserStrconv {
 			pkgListArr = append(pkgListArr, "\"strconv\"\n")
 		}
+		pkgListArr = append(pkgListArr, "\"strings\"\n")
 
 		createAuto := strings.Join(createAutoArr, "")
 		updateAuto := strings.Join(updateAutoArr, "")
@@ -1484,14 +1485,22 @@ func Add{{modelName}}(m *{{modelName}}) (err error) {
 
 // Get{{modelName}}ById retrieves {{modelName}} by Id. Returns error if
 // Id doesn't exist
-func Get{{modelName}}ById(id int) (v {{modelName}}, err error) {
-    res := db.Conn.Where(id).First(&v)
+// relations relations data keys
+func Get{{modelName}}ById(id int, relations []string) (v {{modelName}}, err error) {
+	gormQuery := db.Conn.Where(id)
+
+	//载入关连关系
+	for _, rel := range relations {
+		gormQuery = gormQuery.Preload(rel)
+	}
+
+	res := gormQuery.First(&v)
     return v, res.Error
 }
 
 // GetAll{{modelName}} retrieves all {{modelName}} matches certain condition. Returns empty list if
 // no records exist
-func GetAll{{modelName}}(query map[string]string, fields []string, sortFields []string, offset int64, limit int64) (ml []{{modelName}}, total int64, err error) {
+func GetAll{{modelName}}(query map[string]string, relations []string, fields []string, sortFields []string, offset int64, limit int64) (ml []{{modelName}}, total int64, err error) {
     //过虑条件
     gormQuery := db.NewGormQuery(query)
 
@@ -1508,6 +1517,11 @@ func GetAll{{modelName}}(query map[string]string, fields []string, sortFields []
     if len(fields) > 0 {
         gormQuery = gormQuery.Select(strings.Join(fields, ","))
     }
+
+	//载入关连关系
+	for _, rel := range relations {
+		gormQuery = gormQuery.Preload(rel)
+	}
 
     //查询
 	var l []{{modelName}}
@@ -1607,12 +1621,20 @@ func (c *{{ctrlName}}Controller) Post() {
 // @Title Get One
 // @Description get {{ctrlName}} by id
 // @Param	id		path 	string	true		"The key for staticblock"
+// @Param	rels	query 	string	false		"Many are separated by commas."
 // @Success 200 {object} models.{{ctrlName}}
 // @Failure 403 :id is empty
 // @router /:id [get]
 func (c *{{ctrlName}}Controller) GetOne() {
     id := c.filter.GetId(":id")
-	v, err := models.Get{{ctrlName}}ById(id)
+
+	rels := []string{}
+	relsStr := strings.Trim(c.Input().Get("rels"), "")
+	if relsStr != "" {
+		rels = strings.Split(relsStr, ",")
+	}
+
+	v, err := models.Get{{ctrlName}}ById(id, rels)
 	if err != nil {
 		c.Data["json"] = c.Resp(base.ApiCode_VALIDATE_ERROR, "not find", err.Error())
 	} else {
@@ -1625,6 +1647,7 @@ func (c *{{ctrlName}}Controller) GetOne() {
 // @Title Get All
 // @Description get {{ctrlName}}
 // @Param	query	query	string	false	"Filter. e.g. col1:v1,col2:v2,col-isnull:,col:>50,col:like-adc,col:between-10-20 ..."
+// @Param	rels	query 	string	false	"Associated data identifiers,  Many are separated by commas. e.g. User,User.Info,User.Address"
 // @Param	fields	query	string	false	"Fields returned. e.g. col1,col2 ..."
 // @Param	sortby	query	string	false	"Sorted-by fields. e.g. col1,col2 ..."
 // @Param	order	query	string	false	"Order corresponding to each sortby field, if single value, apply to all sortby fields. e.g. desc,asc ..."
@@ -1640,7 +1663,7 @@ func (c *{{ctrlName}}Controller) GetAll() {
 		c.ServeJSON()
 	}
 
-    l, itemCount, err := models.GetAll{{ctrlName}}(pageParams.Querys, pageParams.Field, pageParams.SortFields, pageParams.Offsets, pageParams.Limits)
+    l, itemCount, err := models.GetAll{{ctrlName}}(pageParams.Querys, pageParams.Rels, pageParams.Field, pageParams.SortFields, pageParams.Offsets, pageParams.Limits)
 	if err != nil {
 		c.Data["json"] = c.Resp(base.ApiCode_ILLEGAL_ERROR, "not find", err.Error())
 	} else {
@@ -1660,7 +1683,7 @@ func (c *{{ctrlName}}Controller) GetAll() {
 // @router /:id [put]
 func (c *{{ctrlName}}Controller) Put() {
     id := c.filter.GetId(":id")
-    v, err := models.Get{{ctrlName}}ById(id)
+    v, err := models.Get{{ctrlName}}ById(id, []string{})
     if err != nil {
         c.Data["json"] = c.Resp(base.ApiCode_VALIDATE_ERROR, "invalid:"+err.Error(), err.Error())
     }

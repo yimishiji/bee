@@ -62,6 +62,15 @@ func (c *InputFilter) GetPagePublicParams() (p *PageCommonParams, err error) {
 	}
 	params.Querys = query
 
+	//relations data
+	if v := c.GetString("rels"); v != "" {
+		for _, rel := range strings.Split(v, ",") {
+			if rel = strings.Trim(rel, ""); rel != "" {
+				params.Rels = append(params.Rels, rel)
+			}
+		}
+	}
+
 	// order by:
 	if len(params.Sort) != 0 {
 		if len(params.Sort) == len(params.Orders) {
