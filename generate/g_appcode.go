@@ -1659,7 +1659,7 @@ func (c *{{ctrlName}}Controller) GetOne() {
 func (c *{{ctrlName}}Controller) GetAll() {
     pageParams, err := c.filter.GetListPrams()
 	if err != nil {
-		c.Data["json"] = c.Resp(base.ApiCode_ILLEGAL_ERROR, "illegal operation", err)
+		c.Data["json"] = c.Resp(base.ApiCode_ILLEGAL_ERROR, "illegal operation", err.Error())
 		c.ServeJSON()
 	}
 
