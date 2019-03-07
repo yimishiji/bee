@@ -776,7 +776,10 @@ func writeModelFiles(tables []*Table, mPath string) {
 
 	for _, tb := range tables {
 		filename := getFileName(tb.Name)
-		fpath := path.Join(mPath, filename+"Model.go")
+		cBase := mPath + string(os.PathSeparator) + filename + "Model"
+		os.Mkdir(cBase, 0777)
+
+		fpath := path.Join(cBase, "Model.go")
 		var f *os.File
 		var err error
 		if utils.IsExist(fpath) {
@@ -944,7 +947,11 @@ func writeFilterFiles(tables []*Table, cPath string, pkgPath string) {
 			continue
 		}
 		filename := getFileName(tb.Name)
-		fpath := path.Join(cPath, filename+"Filter.go")
+
+		cBase := cPath + string(os.PathSeparator) + filename + "Filter"
+		os.Mkdir(cBase, 0777)
+		fpath := path.Join(cBase, "InputFilter.go")
+
 		var f *os.File
 		var err error
 		if utils.IsExist(fpath) {
@@ -1461,7 +1468,7 @@ const (
 {{modelStruct}}
 `
 
-	ModelTPL string = `package models
+	ModelTPL string = `package {{modelName}}Model
 
 import (
 	"strings"
@@ -1476,17 +1483,17 @@ func (t *{{modelName}}) TableName() string {
 }
 
 
-// Add{{modelName}} insert a new {{modelName}} into database and returns
+// Add insert a new {{modelName}} into database and returns
 // last inserted Id on success.
-func Add{{modelName}}(m *{{modelName}}) (err error) {
+func Add(m *{{modelName}}) (err error) {
     res := db.Conn.Create(m)
     return res.Error
 }
 
-// Get{{modelName}}ById retrieves {{modelName}} by Id. Returns error if
+// GetById retrieves {{modelName}} by Id. Returns error if
 // Id doesn't exist
 // relations relations data keys
-func Get{{modelName}}ById(id int, relations []string) (v {{modelName}}, err error) {
+func GetById(id int, relations []string) (v {{modelName}}, err error) {
 	gormQuery := db.Conn.Where(id)
 
 	//载入关连关系
@@ -1498,9 +1505,9 @@ func Get{{modelName}}ById(id int, relations []string) (v {{modelName}}, err erro
     return v, res.Error
 }
 
-// GetAll{{modelName}} retrieves all {{modelName}} matches certain condition. Returns empty list if
+// GetAll retrieves all {{modelName}} matches certain condition. Returns empty list if
 // no records exist
-func GetAll{{modelName}}(query map[string]string, relations []string, fields []string, sortFields []string, offset int64, limit int64) (ml []{{modelName}}, total int64, err error) {
+func GetAll(query map[string]string, relations []string, fields []string, sortFields []string, offset int64, limit int64) (ml []{{modelName}}, total int64, err error) {
     //过虑条件
     gormQuery := db.NewGormQuery(query)
 
@@ -1536,15 +1543,15 @@ func GetAll{{modelName}}(query map[string]string, relations []string, fields []s
 	return l, itemCount, err
 }
 
-// Update{{modelName}} updates {{modelName}} by Id and returns error if
+// Update updates {{modelName}} by Id and returns error if
 // the record to be updated doesn't exist
-func Update{{modelName}}(m *{{modelName}}) (err error) {
+func Update(m *{{modelName}}) (err error) {
 	return db.Conn.Save(m).Error
 }
 
-// Delete{{modelName}} deletes {{modelName}} by Id and returns error if
+// Delete deletes {{modelName}} by Id and returns error if
 // the record to be deleted doesn't exist
-func Delete{{modelName}}(id int) (err error) {
+func Delete(id int) (err error) {
 	v := new({{modelName}})
 
 	// ascertain id exists in the database
@@ -1557,7 +1564,7 @@ func Delete{{modelName}}(id int) (err error) {
 }
 
 // BeforeCreate hook
-//func (user *SdbB2cCustomerLog) BeforeCreate(scope *gorm.Scope) error {
+//func (t *{{modelName}}) BeforeCreate(scope *gorm.Scope) error {
 //    //scope.SetColumn("ID", uuid.New())
 //    return nil
 //}
@@ -1565,8 +1572,8 @@ func Delete{{modelName}}(id int) (err error) {
 	CtrlTPL = `package controllers
 
 import (
-	"{{pkgPath}}/models"
-    "{{pkgPath}}/filters"
+	"{{pkgPath}}/models/{{ctrlName}}Model"
+    "{{pkgPath}}/filters/{{ctrlName}}Filter"
 	{{pkg}}	
 
     "github.com/yimishiji/bee/pkg/base"
@@ -1576,7 +1583,7 @@ import (
 // {{ctrlName}}Controller operations for {{ctrlName}}
 type {{ctrlName}}Controller struct {
 	base.Controller
-    filter *filters.{{ctrlName}}Filter
+    filter *{{ctrlName}}Filter.Filter
 }
 
 // URLMapping ...
@@ -1590,22 +1597,22 @@ func (c *{{ctrlName}}Controller) URLMapping() {
 
 // init inputFilter
 func (c *{{ctrlName}}Controller) Prepare() {
-    c.filter = filters.New{{ctrlName}}Filter(c.Ctx.Input)
+    c.filter = {{ctrlName}}Filter.NewFilter(c.Ctx.Input)
 }
 
 // Post ...
 // @Title Post
 // @Description create {{ctrlName}}
 // @Param	body		body 	models.{{ctrlName}}	true		"body for {{ctrlName}} content"
-// @Success 201 {int} models.{{ctrlName}}
+// @Success 201 {int} models.{{ctrlName}}Model.{{ctrlName}}
 // @Failure 403 body is empty
 // @router / [post]
 func (c *{{ctrlName}}Controller) Post() {
-    var v models.{{ctrlName}}
-    if f, err := c.filter.Get{{ctrlName}}Post(); err == nil {
+    var v {{ctrlName}}Model.{{ctrlName}}
+    if f, err := c.filter.GetPost(); err == nil {
         structs.StructMerge(&v, f)
 		{{createAuto}}
-		if err := models.Add{{ctrlName}}(&v); err == nil {
+		if err := {{ctrlName}}Model.Add(&v); err == nil {
 			c.Ctx.Output.SetStatus(201)
 			c.Data["json"] = c.Resp(base.ApiCode_SUCC, "ok", v)
 		} else {
@@ -1622,7 +1629,7 @@ func (c *{{ctrlName}}Controller) Post() {
 // @Description get {{ctrlName}} by id
 // @Param	id		path 	string	true		"The key for staticblock"
 // @Param	rels	query 	string	false		"Many are separated by commas."
-// @Success 200 {object} models.{{ctrlName}}
+// @Success 200 {object} models.{{ctrlName}}Model.{{ctrlName}}
 // @Failure 403 :id is empty
 // @router /:id [get]
 func (c *{{ctrlName}}Controller) GetOne() {
@@ -1634,7 +1641,7 @@ func (c *{{ctrlName}}Controller) GetOne() {
 		rels = strings.Split(relsStr, ",")
 	}
 
-	v, err := models.Get{{ctrlName}}ById(id, rels)
+	v, err := {{ctrlName}}Model.GetById(id, rels)
 	if err != nil {
 		c.Data["json"] = c.Resp(base.ApiCode_VALIDATE_ERROR, "not find", err.Error())
 	} else {
@@ -1653,7 +1660,7 @@ func (c *{{ctrlName}}Controller) GetOne() {
 // @Param	order	query	string	false	"Order corresponding to each sortby field, if single value, apply to all sortby fields. e.g. desc,asc ..."
 // @Param	limit	query	string	false	"Limit the size of result set. Must be an integer"
 // @Param	offset	query	string	false	"Start position of result set. Must be an integer"
-// @Success 200 {object} models.{{ctrlName}}
+// @Success 200 {object} models.{{ctrlName}}Model.{{ctrlName}}
 // @Failure 403
 // @router / [get]
 func (c *{{ctrlName}}Controller) GetAll() {
@@ -1663,7 +1670,7 @@ func (c *{{ctrlName}}Controller) GetAll() {
 		c.ServeJSON()
 	}
 
-    l, itemCount, err := models.GetAll{{ctrlName}}(pageParams.Querys, pageParams.Rels, pageParams.Field, pageParams.SortFields, pageParams.Offsets, pageParams.Limits)
+    l, itemCount, err := {{ctrlName}}Model.GetAll(pageParams.Querys, pageParams.Rels, pageParams.Field, pageParams.SortFields, pageParams.Offsets, pageParams.Limits)
 	if err != nil {
 		c.Data["json"] = c.Resp(base.ApiCode_ILLEGAL_ERROR, "not find", err.Error())
 	} else {
@@ -1683,15 +1690,15 @@ func (c *{{ctrlName}}Controller) GetAll() {
 // @router /:id [put]
 func (c *{{ctrlName}}Controller) Put() {
     id := c.filter.GetId(":id")
-    v, err := models.Get{{ctrlName}}ById(id, []string{})
+    v, err := {{ctrlName}}Model.GetById(id, []string{})
     if err != nil {
         c.Data["json"] = c.Resp(base.ApiCode_VALIDATE_ERROR, "invalid:"+err.Error(), err.Error())
     }
 
-    if f, err := c.filter.Get{{ctrlName}}Put(); err == nil {
+    if f, err := c.filter.GetPut(); err == nil {
         structs.StructMerge(&v, f)
 		{{updateAuto}}
-		if err := models.Update{{ctrlName}}(&v); err == nil {
+		if err := {{ctrlName}}Model.Update(&v); err == nil {
 			c.Data["json"] = c.Resp(base.ApiCode_SUCC, "ok")
 		} else {
 			c.Data["json"] = c.Resp(base.ApiCode_SYS_ERROR, "system error", err.Error())
@@ -1711,7 +1718,7 @@ func (c *{{ctrlName}}Controller) Put() {
 // @router /:id [delete]
 func (c *{{ctrlName}}Controller) Delete() {
     id := c.filter.GetId(":id")
-	if err := models.Delete{{ctrlName}}(id); err == nil {
+	if err := {{ctrlName}}Model.Delete(id); err == nil {
 		c.Data["json"] = c.Resp(base.ApiCode_SUCC, "ok")
 	} else {
 		c.Data["json"] = c.Resp(base.ApiCode_ILLEGAL_ERROR, "illegal operation", err.Error())
@@ -1720,7 +1727,7 @@ func (c *{{ctrlName}}Controller) Delete() {
 }
 `
 	FilterTPL = `
-package filters
+package {{modelName}}Filter
 
 import (
 	"encoding/json"
@@ -1731,12 +1738,12 @@ import (
 	"github.com/yimishiji/bee/pkg/filters"
 )
 
-type {{modelName}}Filter struct {
+type Filter struct {
 	filters.InputFilter
 }
 
-func New{{modelName}}Filter(r *context.BeegoInput) *{{modelName}}Filter {
-	return &{{modelName}}Filter{
+func NewFilter(r *context.BeegoInput) *Filter {
+	return &Filter{
 		filters.InputFilter{
 			Input: r,
 		},
@@ -1744,12 +1751,12 @@ func New{{modelName}}Filter(r *context.BeegoInput) *{{modelName}}Filter {
 }
 
 //post提交 数据格式
-type {{modelName}}Post struct {
+type Post struct {
     {{inpuTfieldList}}
 }
 
 //获取Post接交数据
-func (this *{{modelName}}Filter) Get{{modelName}}Post() (v {{modelName}}Post, err error) {
+func (this *Filter) GetPost() (v Post, err error) {
 	if err := json.Unmarshal(this.Input.RequestBody, &v); err == nil {
 		//验证器
 		valid := validation.Validation{}{{ValidRuleList}}
@@ -1768,12 +1775,12 @@ func (this *{{modelName}}Filter) Get{{modelName}}Post() (v {{modelName}}Post, er
 }
 
 //Put提交 数据格式, 每个表单提交需针对性定义一份结构体,
-type {{modelName}}Put struct {
+type Put struct {
      {{inpuTfieldList}}
 }
 
 //获取put提交数据
-func (this *{{modelName}}Filter) Get{{modelName}}Put() (v {{modelName}}Put, err error) {
+func (this *Filter) GetPut() (v Put, err error) {
 	if err := json.Unmarshal(this.Input.RequestBody, &v); err == nil {
 		//验证器
 		valid := validation.Validation{}{{ValidRuleList}}
@@ -1788,7 +1795,7 @@ func (this *{{modelName}}Filter) Get{{modelName}}Put() (v {{modelName}}Put, err 
 }
 
 //分页参数
-func (this *{{modelName}}Filter) GetListPrams() (params *filters.PageCommonParams, err error) {
+func (this *Filter) GetListPrams() (params *filters.PageCommonParams, err error) {
 	if params, err := this.GetPagePublicParams(); err == nil {
 
 		//验证筛选的条件合法性
