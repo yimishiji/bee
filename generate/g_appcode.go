@@ -1711,6 +1711,7 @@ func (c *{{ctrlName}}Controller) GetAll() {
 	if err != nil {
 		c.Data["json"] = c.Resp(base.ApiCode_ILLEGAL_ERROR, "illegal operation", err.Error())
 		c.ServeJSON()
+		return
 	}
 
     l, itemCount, err := {{ctrlName}}Model.GetAll(pageParams.Querys, pageParams.Rels, pageParams.Field, pageParams.SortFields, pageParams.Offsets, pageParams.Limits)
@@ -1736,6 +1737,8 @@ func (c *{{ctrlName}}Controller) Put() {
     v, err := {{ctrlName}}Model.GetById(id, []string{})
     if err != nil {
         c.Data["json"] = c.Resp(base.ApiCode_VALIDATE_ERROR, "invalid:"+err.Error(), err.Error())
+        c.ServeJSON()
+        return
     }
 
     if f, err := c.filter.GetPut(); err == nil {
