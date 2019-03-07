@@ -1524,7 +1524,7 @@ import (
 )
 
 type Model struct {
-	TableStruct.{{modelName}}
+	TableStructs.{{modelName}}
 }
 
 // Add insert a new {{modelName}} into database and returns
