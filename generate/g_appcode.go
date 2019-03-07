@@ -746,7 +746,7 @@ var notirceMsgArr []string
 func writeSourceFiles(pkgPath string, tables []*Table, mode byte, paths *MvcPath) {
 	if (OModel & mode) == OModel {
 		beeLogger.Log.Info("Creating model files...")
-		writeModelFiles(tables, paths.ModelPath)
+		writeModelFiles(tables, paths.ModelPath, pkgPath)
 	}
 	if (OController & mode) == OController {
 		beeLogger.Log.Info("Creating controller files...")
@@ -771,13 +771,16 @@ func writeSourceFiles(pkgPath string, tables []*Table, mode byte, paths *MvcPath
 }
 
 // writeModelFiles generates model files
-func writeModelFiles(tables []*Table, mPath string) {
+func writeModelFiles(tables []*Table, mPath string, pkgPath string) {
 	w := colors.NewColorWriter(os.Stdout)
 
 	for _, tb := range tables {
 		filename := getFileName(tb.Name)
 		cBase := mPath + string(os.PathSeparator) + filename + "Model"
 		os.Mkdir(cBase, 0777)
+
+		cBaseTableStruct := mPath + string(os.PathSeparator) + "TableStructs"
+		os.Mkdir(cBaseTableStruct, 0777)
 
 		fpath := path.Join(cBase, "Model.go")
 		var f *os.File
@@ -807,9 +810,11 @@ func writeModelFiles(tables []*Table, mPath string) {
 		} else {
 			template = ModelTPL
 		}
-		fileStr := strings.Replace(template, "{{modelStruct}}", tb.String(), 1)
+		tbString := tb.String()
+		fileStr := strings.Replace(template, "{{modelStruct}}", tbString, 1)
 		fileStr = strings.Replace(fileStr, "{{modelName}}", utils.CamelCase(tb.Name), -1)
 		fileStr = strings.Replace(fileStr, "{{tableName}}", tb.Name, -1)
+		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
 
 		// If table contains time field, import time.Time package
 		timePkg := ""
@@ -820,6 +825,39 @@ func writeModelFiles(tables []*Table, mPath string) {
 		}
 		fileStr = strings.Replace(fileStr, "{{timePkg}}", timePkg, -1)
 		fileStr = strings.Replace(fileStr, "{{importTimePkg}}", importTimePkg, -1)
+		if _, err := f.WriteString(fileStr); err != nil {
+			beeLogger.Log.Fatalf("Could not write model file to '%s': %s", fpath, err)
+		}
+		utils.CloseFile(f)
+		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpath, "\x1b[0m")
+		utils.FormatSourceCode(fpath)
+
+		//表结构
+		fpath = path.Join(cBaseTableStruct, filename+".go")
+		if utils.IsExist(fpath) {
+			beeLogger.Log.Warnf("'%s' already exists. Do you want to overwrite it? [Yes|No] ", fpath)
+			if utils.AskForConfirmation() {
+				f, err = os.OpenFile(fpath, os.O_RDWR|os.O_TRUNC, 0666)
+				if err != nil {
+					beeLogger.Log.Warnf("%s", err)
+					continue
+				}
+			} else {
+				beeLogger.Log.Warnf("Skipped create file '%s'", fpath)
+				continue
+			}
+		} else {
+			f, err = os.OpenFile(fpath, os.O_CREATE|os.O_RDWR, 0666)
+			if err != nil {
+				beeLogger.Log.Warnf("%s", err)
+				continue
+			}
+		}
+		fileStr = strings.Replace(ModelBaseTPL, "{{modelStruct}}", tbString, 1)
+		fileStr = strings.Replace(fileStr, "{{modelName}}", utils.CamelCase(tb.Name), -1)
+		fileStr = strings.Replace(fileStr, "{{tableName}}", tb.Name, -1)
+		fileStr = strings.Replace(fileStr, "{{importTimePkg}}", importTimePkg, -1)
+
 		if _, err := f.WriteString(fileStr); err != nil {
 			beeLogger.Log.Fatalf("Could not write model file to '%s': %s", fpath, err)
 		}
@@ -1467,25 +1505,31 @@ const (
 {{importTimePkg}}
 {{modelStruct}}
 `
-
-	ModelTPL string = `package {{modelName}}Model
-
-import (
-	"strings"
-	{{timePkg}}
-    "github.com/yimishiji/bee/pkg/db"
-)
-
+	ModelBaseTPL = `package TableStructs
+{{importTimePkg}}
 {{modelStruct}}
 
 func (t *{{modelName}}) TableName() string {
 	return "{{tableName}}"
 }
 
+`
+	ModelTPL string = `package {{modelName}}Model
+
+import (
+	"strings"
+	{{timePkg}}
+	"{{pkgPath}}/models/TableStructs"
+    "github.com/yimishiji/bee/pkg/db"
+)
+
+type Model struct {
+	TableStruct.{{modelName}}
+}
 
 // Add insert a new {{modelName}} into database and returns
 // last inserted Id on success.
-func Add(m *{{modelName}}) (err error) {
+func Add(m *Model) (err error) {
     res := db.Conn.Create(m)
     return res.Error
 }
@@ -1493,7 +1537,7 @@ func Add(m *{{modelName}}) (err error) {
 // GetById retrieves {{modelName}} by Id. Returns error if
 // Id doesn't exist
 // relations relations data keys
-func GetById(id int, relations []string) (v {{modelName}}, err error) {
+func GetById(id int, relations []string) (v Model, err error) {
 	gormQuery := db.Conn.Where(id)
 
 	//载入关连关系
@@ -1507,7 +1551,7 @@ func GetById(id int, relations []string) (v {{modelName}}, err error) {
 
 // GetAll retrieves all {{modelName}} matches certain condition. Returns empty list if
 // no records exist
-func GetAll(query map[string]string, relations []string, fields []string, sortFields []string, offset int64, limit int64) (ml []{{modelName}}, total int64, err error) {
+func GetAll(query map[string]string, relations []string, fields []string, sortFields []string, offset int64, limit int64) (ml []Model, total int64, err error) {
     //过虑条件
     gormQuery := db.NewGormQuery(query)
 
@@ -1518,7 +1562,7 @@ func GetAll(query map[string]string, relations []string, fields []string, sortFi
 
     //获取总页数
     var itemCount int64
-    gormQuery.Model({{modelName}}{}).Count(&itemCount)
+    gormQuery.Model(Model{}).Count(&itemCount)
 
     //select
     if len(fields) > 0 {
@@ -1531,7 +1575,7 @@ func GetAll(query map[string]string, relations []string, fields []string, sortFi
 	}
 
     //查询
-	var l []{{modelName}}
+	var l []Model
     err = gormQuery.Limit(limit).Offset(offset).Find(&l).Error
     if err != nil {
         return nil, itemCount, err
@@ -1545,14 +1589,14 @@ func GetAll(query map[string]string, relations []string, fields []string, sortFi
 
 // Update updates {{modelName}} by Id and returns error if
 // the record to be updated doesn't exist
-func Update(m *{{modelName}}) (err error) {
+func Update(m *Model) (err error) {
 	return db.Conn.Save(m).Error
 }
 
 // Delete deletes {{modelName}} by Id and returns error if
 // the record to be deleted doesn't exist
 func Delete(id int) (err error) {
-	v := new({{modelName}})
+	v := new(Model)
 
 	// ascertain id exists in the database
 	err = db.Conn.Where(id).First(&v).Error
@@ -1608,7 +1652,7 @@ func (c *{{ctrlName}}Controller) Prepare() {
 // @Failure 403 body is empty
 // @router / [post]
 func (c *{{ctrlName}}Controller) Post() {
-    var v {{ctrlName}}Model.{{ctrlName}}
+    var v {{ctrlName}}Model.Model
     if f, err := c.filter.GetPost(); err == nil {
         structs.StructMerge(&v, f)
 		{{createAuto}}
