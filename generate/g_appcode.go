@@ -1530,8 +1530,7 @@ type Model struct {
 // Add insert a new {{modelName}} into database and returns
 // last inserted Id on success.
 func Add(m *Model) (err error) {
-    res := db.Conn.Create(m)
-    return res.Error
+    return db.Conn.Create(m).Error
 }
 
 // GetById retrieves {{modelName}} by Id. Returns error if
@@ -1545,8 +1544,8 @@ func GetById(id int, relations []string) (v Model, err error) {
 		gormQuery = gormQuery.Preload(rel)
 	}
 
-	res := gormQuery.First(&v)
-    return v, res.Error
+	err = gormQuery.First(&v).Error
+    return v, err
 }
 
 // GetAll retrieves all {{modelName}} matches certain condition. Returns empty list if
