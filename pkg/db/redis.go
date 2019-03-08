@@ -6,11 +6,11 @@ import (
 )
 
 var (
-	Redis *RedisClient
+	Redis *redisClient
 )
 
 //连接redis
-func GetRedisClient() (*RedisClient, error) {
+func GetRedisClient() (*redisClient, error) {
 	db, _ := beego.AppConfig.Int("redis::database")
 	redisOption := &redis.Options{
 		Addr:     beego.AppConfig.String("redis::host"),

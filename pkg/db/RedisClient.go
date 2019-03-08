@@ -3,19 +3,21 @@ package db
 import (
 	"time"
 
+	"encoding/json"
+
 	"github.com/astaxie/beego"
 	"github.com/go-redis/redis"
 )
 
-type RedisClient struct {
+type redisClient struct {
 	baseRedisClient *redis.Client
 	prefix          string
 }
 
 // NewClient returns a client to the Redis Server specified by Options.
-func NewClient(redisOption *redis.Options) *RedisClient {
+func NewClient(redisOption *redis.Options) *redisClient {
 	client := redis.NewClient(redisOption)
-	c := RedisClient{
+	c := redisClient{
 		baseRedisClient: client,
 		prefix:          beego.AppConfig.String("redis::prefix"),
 	}
@@ -23,12 +25,12 @@ func NewClient(redisOption *redis.Options) *RedisClient {
 }
 
 // Redis `GET key` command. It returns redis.Nil error when key does not exist.
-func (c *RedisClient) Get(key string) *redis.StringCmd {
+func (c *redisClient) Get(key string) *redis.StringCmd {
 	key = c.BuildKey(key)
 	return c.baseRedisClient.Get(key)
 }
 
-func (c *RedisClient) GetSet(key string, value interface{}) *redis.StringCmd {
+func (c *redisClient) GetSet(key string, value interface{}) *redis.StringCmd {
 	key = c.BuildKey(key)
 	return c.baseRedisClient.GetSet(key, value)
 }
@@ -37,12 +39,19 @@ func (c *RedisClient) GetSet(key string, value interface{}) *redis.StringCmd {
 //
 // Use expiration for `SETEX`-like behavior.
 // Zero expiration means the key has no expiration time.
-func (c *RedisClient) Set(key string, value interface{}, expiration time.Duration) *redis.StatusCmd {
+func (c *redisClient) Set(key string, value interface{}, expiration time.Duration) *redis.StatusCmd {
 	key = c.BuildKey(key)
+
+	if _, isstring := value.(string); !isstring {
+		if listStr, err := json.Marshal(value); err == nil {
+			return c.baseRedisClient.Set(key, listStr, expiration)
+		}
+	}
+
 	return c.baseRedisClient.Set(key, value, expiration)
 }
 
 //主键加前缀
-func (c *RedisClient) BuildKey(key string) string {
+func (c *redisClient) BuildKey(key string) string {
 	return c.prefix + key
 }
