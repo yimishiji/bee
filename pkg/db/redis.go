@@ -6,20 +6,20 @@ import (
 )
 
 var (
-	Redis *redis.Client
+	Redis *RedisClient
 )
 
 //连接redis
-func GetRedisClient() (*redis.Client, error) {
+func GetRedisClient() (*RedisClient, error) {
 	db, _ := beego.AppConfig.Int("redis::database")
 	redisOption := &redis.Options{
 		Addr:     beego.AppConfig.String("redis::host"),
 		Password: beego.AppConfig.String("redis::password"),
 		DB:       db,
 	}
-	client := redis.NewClient(redisOption)
+	client := NewClient(redisOption)
 
-	_, err := client.Ping().Result()
+	_, err := client.baseRedisClient.Ping().Result()
 	if err != nil {
 		return nil, err
 	}
