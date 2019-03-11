@@ -11,7 +11,7 @@ type User struct {
 	Id           string
 	AccessToken  string
 	RefreshToken string
-	UserInfo     UserInfo
+	UserInfo     *UserInfo
 }
 
 //是否是游客
@@ -80,18 +80,18 @@ func (u *User) Login() {
 		return
 	}
 
-	userInfoKey := u.AccessToken + ":token"
+	userInfoKey := u.AccessToken + ":info"
 	userToken, err := db.Redis.Get(userInfoKey).Result()
 	if err != nil {
 		return
 	}
 
-	token := new(Token)
-	err = json.Unmarshal([]byte(userToken), &token)
+	userInfo := new(UserInfo)
+	err = json.Unmarshal([]byte(userToken), &userInfo)
 	if err != nil {
 		return
 	}
 
-	u.RefreshToken = token.RefreshToken
-	u.Id = token.UserID
+	u.Id = string(userInfo.UserID)
+	u.UserInfo = userInfo
 }
