@@ -25,27 +25,42 @@ func (u *User) GetId() string {
 	return u.Id
 }
 
+//获取部门id
+func (u *User) GetDepartmentID() int {
+	u.Login()
+	return u.UserInfo.DepartmentID
+}
+
+//获取商户id
+func (u *User) GetBusinessID() int {
+	u.Login()
+	return u.UserInfo.BusinessID
+}
+
 // 会员附加信息
 type UserInfo struct {
-	UserID       string `json:"user_id"`
-	LoginAccount string `json:"login_account"`
-	OpenID       string `json:"open_id"`
-	Name         string `json:"name"`
-	Password     string `json:"password"`
-	Email        string `json:"email"`
-	Mobile       string `json:"mobile"`
-	JobNumber    string `json:"job_number"`
-	Status       string `json:"status"`
-	Sex          string `json:"sex"`
-	HeadImgURL   string `json:"head_img_url"`
-	BusinessID   string `json:"business_id"`
-	Remark       string `json:"remark"`
-	Version      string `json:"version"`
-	CreatedBy    string `json:"created_by"`
-	UpdatedBy    string `json:"updated_by"`
-	UpdatedAt    string `json:"updated_at"`
-	CreatedAt    string `json:"created_at"`
-	BusinessKey  string `json:"business_key"`
+	UserID          int    `json:"user_id"`
+	LoginAccount    string `json:"login_account"`
+	OpenID          string `json:"open_id"`
+	Name            string `json:"name"`
+	Email           string `json:"email"`
+	Mobile          string `json:"mobile"`
+	PrefixMobile    string `json:"prefix_mobile"`
+	DepartmentID    int    `json:"department_id"`
+	PositionID      int    `json:"position_id"`
+	JobNumber       int    `json:"job_number"`
+	Status          int    `json:"status"`
+	Sex             int    `json:"sex"`
+	HeadImgURL      string `json:"head_img_url"`
+	BusinessID      int    `json:"business_id"`
+	IsLoginBusiness int    `json:"is_login_business"`
+	Remark          string `json:"remark"`
+	Version         int    `json:"version"`
+	CreatedBy       string `json:"created_by"`
+	UpdatedBy       string `json:"updated_by"`
+	UpdatedAt       string `json:"updated_at"`
+	CreatedAt       string `json:"created_at"`
+	BusinessKey     string `json:"business_key"`
 }
 
 type Token struct {
