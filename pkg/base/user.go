@@ -39,6 +39,12 @@ func (u *User) GetBusinessID() int {
 	return u.UserInfo.BusinessID
 }
 
+//获取职位id
+func (u *User) GetPositionID() int {
+	u.Login()
+	return u.UserInfo.PositionID
+}
+
 // 会员附加信息
 type UserInfo struct {
 	UserID          int    `json:"user_id"`
