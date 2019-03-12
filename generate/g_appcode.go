@@ -2058,7 +2058,7 @@ func init() {
    }
    .top {
        min-width: 540px;
-       height: 38px;
+       min-height: 38px;
        text-align: left;
    }
    /* 下拉 */
@@ -2119,8 +2119,9 @@ func init() {
     }
     .colsetting{
         font-size: 20px;
-        padding-top: 15px;
-        padding-right: 10px;
+        padding-top: 10px;
+        right: 25px;
+        position: absolute;
     }
 </style>
 `
