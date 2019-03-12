@@ -3,6 +3,8 @@ package base
 import (
 	"encoding/json"
 
+	"strconv"
+
 	"github.com/yimishiji/bee/pkg/db"
 )
 
@@ -92,6 +94,6 @@ func (u *User) Login() {
 		return
 	}
 
-	u.Id = string(userInfo.UserID)
+	u.Id = strconv.Itoa(userInfo.UserID)
 	u.UserInfo = userInfo
 }
