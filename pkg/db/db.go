@@ -53,7 +53,7 @@ func NewGormQuery(query map[string]string) *gorm.DB {
 			gorm = gorm.Where(k+" LIKE ?", "%"+v+"%")
 		} else if strings.HasPrefix(v, "between-") {
 			v = strings.Replace(v, "between-", "", 1)
-			ranges := strings.SplitN(k, "-", 2)
+			ranges := strings.SplitN(v, "-", 2)
 			if len(ranges) == 2 {
 				star, _ := strconv.Atoi(ranges[0])
 				end, _ := strconv.Atoi(ranges[1])
