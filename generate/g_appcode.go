@@ -1536,7 +1536,7 @@ func Add(m *Model) (err error) {
 // GetById retrieves {{modelName}} by Id. Returns error if
 // Id doesn't exist
 // relations relations data keys
-func GetById(id int, relations []string) (v Model, err error) {
+func GetById(id int, relations ...string) (v Model, err error) {
 	gormQuery := db.Conn.Where(id)
 
 	//载入关连关系
