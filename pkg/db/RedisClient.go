@@ -51,6 +51,14 @@ func (c *redisClient) Set(key string, value interface{}, expiration time.Duratio
 	return c.baseRedisClient.Set(key, value, expiration)
 }
 
+//删除缓存
+func (c *redisClient) Del(key ...string) {
+	for i, _ := range key {
+		key[i] = c.BuildKey(key[i])
+	}
+	c.baseRedisClient.Del(key...)
+}
+
 //主键加前缀
 func (c *redisClient) BuildKey(key string) string {
 	return c.prefix + key
