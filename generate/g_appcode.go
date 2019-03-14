@@ -1734,7 +1734,7 @@ func (c *{{ctrlName}}Controller) GetAll() {
 // @router /:id [put]
 func (c *{{ctrlName}}Controller) Put() {
     id := c.filter.GetId(":id")
-    v, err := {{ctrlName}}Model.GetById(id, []string{})
+    v, err := {{ctrlName}}Model.GetById(id)
     if err != nil {
         c.Data["json"] = c.Resp(base.ApiCode_VALIDATE_ERROR, "invalid:"+err.Error(), err.Error())
         c.ServeJSON()
