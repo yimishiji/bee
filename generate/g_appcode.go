@@ -1684,7 +1684,7 @@ func (c *{{ctrlName}}Controller) GetOne() {
 		rels = strings.Split(relsStr, ",")
 	}
 
-	v, err := {{ctrlName}}Model.GetById(id, rels)
+	v, err := {{ctrlName}}Model.GetById(id, rels...)
 	if err != nil {
 		c.Data["json"] = c.Resp(base.ApiCode_VALIDATE_ERROR, "not find", err.Error())
 	} else {
