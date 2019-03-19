@@ -904,10 +904,11 @@ func getparams(str string) []string {
 func getModel(str string) (objectname string, m swagger.Schema, realTypes []string) {
 	strs := strings.Split(str, ".")
 	objectname = strs[len(strs)-1]
+
 	packageName := ""
 	m.Type = "object"
 	for _, pkg := range astPkgs {
-		if strs[0] == pkg.Name {
+		if strs[0] == pkg.Name || (strs[1] == pkg.Name && strings.Contains(str, "Model.Model")) {
 			for _, fl := range pkg.Files {
 				for k, d := range fl.Scope.Objects {
 					if d.Kind == ast.Typ {
@@ -922,14 +923,22 @@ func getModel(str string) (objectname string, m swagger.Schema, realTypes []stri
 		}
 	}
 	if m.Title == "" {
+		if strings.Contains(str, "Model.Model") == false {
+			TryStr := str + "Model.Model"
+			return getModel(TryStr)
+		}
+
 		beeLogger.Log.Warnf("Cannot find the object: %s", str)
 		// TODO remove when all type have been supported
 		//os.Exit(1)
 	}
+
 	if len(rootapi.Definitions) == 0 {
 		rootapi.Definitions = make(map[string]swagger.Schema)
 	}
 	objectname = packageName + "." + objectname
+	m.Title = objectname
+
 	rootapi.Definitions[objectname] = m
 	return
 }
