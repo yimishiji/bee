@@ -22,6 +22,7 @@ const (
 	ApiCode_VALIDATE_ERROR ApiCode = -3
 	ApiCode_ILLEGAL_ERROR  ApiCode = -4
 	ApiCode_OAUTH_ERROR    ApiCode = -20001
+	ApiCode_OAUTH_FAIL     ApiCode = -10003
 )
 
 // Resp
