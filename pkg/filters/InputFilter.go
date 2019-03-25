@@ -139,9 +139,9 @@ func (c *InputFilter) GetId(key string) int {
 }
 
 //判断字符串是否在数组中
-func InStingArr(str string, needArr []string) bool {
-	for _, v := range needArr {
-		if str == v {
+func InStingArr(needStr string, resourceArr []string) bool {
+	for _, v := range resourceArr {
+		if needStr == v {
 			return true
 		}
 	}
