@@ -63,3 +63,7 @@ func (c *redisClient) Del(key ...string) {
 func (c *redisClient) BuildKey(key string) string {
 	return c.prefix + key
 }
+
+func (c *redisClient) Ping() error {
+	return c.baseRedisClient.Ping().Err()
+}
