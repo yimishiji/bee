@@ -13,7 +13,7 @@ type User struct {
 	Id           string
 	AccessToken  string
 	RefreshToken string
-	UserInfo     *UserInfo
+	UserInfo     UserInfo
 }
 
 //是否是游客
@@ -101,5 +101,5 @@ func (u *User) Login() {
 	}
 
 	u.Id = strconv.Itoa(userInfo.UserID)
-	u.UserInfo = userInfo
+	u.UserInfo = *userInfo
 }
