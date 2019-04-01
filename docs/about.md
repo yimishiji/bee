@@ -8,7 +8,7 @@
     conf                
     controllers           
     database              
-    filters               接收参数过层
+    filters               接收参数过滤层
     models
     pkg                   基础包类，sdk
     routers     
@@ -35,7 +35,7 @@
     
 ```
 
-### 简单关连模型 单次关连，只关连其它表，关连的表不再关连其它的
+#### 简单关连模型 单次关连，只关连其它表，关连的表不再关连其它的
 
 ```$xslt
     modelsTableStructs  表结构层
@@ -48,7 +48,7 @@
               rels table3
 ```
 
-### 多重关连模型，需要建一个model的副本，实现正反向关连
+#### 多重关连模型，需要建一个model的副本，实现正反向关连
 
 ```$xslt
     modelsTableStructs  表结构层
