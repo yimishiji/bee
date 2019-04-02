@@ -27,6 +27,11 @@ bee api app-test
        create src/app-test/service-logics/user/user.go
        create src/app-test/service-logics/health-checks/database.go
        create src/app-test/service-logics/health-checks/redis.go
+       create src/app-test/bee.json
+       create src/app-test/.gitignore
+       create src/app-test/Dockerfile
+       create src/app-test/.dockerignore
+
 ```
 
 ### 项目基本目录结构说明
@@ -74,4 +79,12 @@ pkg其它类包
 >- /service-logics/health-checks/database.go  数据库连接检查
 >- /service-logics/health-checks/redis.go     redis连接检查        
 
-                      
+beego框架bee工具配置文件
+>- bee.json
+
+git版本控制忽略文件列表
+>- .gitignore
+
+docker描述文件,及docker编译时的忽略文件列表
+>- Dockerfile
+>- .dockerignore

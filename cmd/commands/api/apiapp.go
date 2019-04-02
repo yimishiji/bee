@@ -93,16 +93,27 @@ prot = 587
 user = ***@163.com
 password = ****
 `
+var apiconfLocal = `
+[db]
+user = {{.Appname}}
+password = ******
+
+[redis]
+password = ********
+database = 0
+
+[smtp]
+user = ***@163.com
+password = ****
+`
 var apiMaingo = `package main
 
 import (
-	"{{.Appname}}/pkg/middle-wares"
+	middleWares "{{.Appname}}/pkg/middle-wares"
 	_ "{{.Appname}}/routers"
+	HealthChecks "{{.Appname}}/service-logics/health-checks"
 	"net/http"
-
 	"os"
-
-	"{{.Appname}}/service-logics/health-checks"
 
 	"github.com/astaxie/beego"
 	"github.com/astaxie/beego/plugins/cors"
@@ -944,6 +955,49 @@ func (c *RedisCheck) Check() error {
 	return db.Redis.Ping()
 }
 `
+var beeConfigTpl = `{
+	"version": 0,
+	"database": {
+		"driver": "mysql",
+		"conn": "user:password@tcp(localhost:3306)/dbname",
+		"prefix": "prefix_"
+	},
+	"cmd_args": [],
+	"enable_reload": true
+}
+`
+var gitIgnoreTpl = `{{.Appname}}*
+/vue/
+conf/app_local.conf
+`
+var dockerFileTpl = `FROM golang:1.12.1
+
+# Godep for vendoring
+# RUN go get github.com/tools/godep
+
+# Recompile the standard library without CGO
+# RUN CGO_ENABLED=0 go install -a std
+
+ENV APP_DIR $GOPATH/src/{{.Appname}}
+RUN mkdir -p $APP_DIR
+
+# Set the entrypoint
+# ENTRYPOINT ({{.Appname}})
+ADD . $APP_DIR
+
+# Compile the binary and statically link
+RUN cd $APP_DIR && CGO_ENABLED=0 go build -ldflags '-d -w -s'
+# RUN mv $APP_DIR/bpm-api $GOPATH/bin/
+# RUN rm -rf $APP_DIR
+
+EXPOSE 8100
+`
+var dockerIgnoreTpl = `*.zip
+*.7z
+.git/
+vue
+{{.Appname}}*
+`
 
 func init() {
 	CmdApiapp.Flag.Var(&generate.Tables, "tables", "List of table names separated by a comma.")
@@ -978,15 +1032,19 @@ func createAPI(cmd *commands.Command, args []string) int {
 
 	os.MkdirAll(appPath, 0755)
 	fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", appPath, "\x1b[0m")
-	os.Mkdir(path.Join(appPath, "conf"), 0755)
-	fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "conf"), "\x1b[0m")
 	os.Mkdir(path.Join(appPath, "controllers"), 0755)
 	fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "controllers"), "\x1b[0m")
 	os.Mkdir(path.Join(appPath, "tests"), 0755)
 	fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "tests"), "\x1b[0m")
+
+	os.Mkdir(path.Join(appPath, "conf"), 0755)
+	fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "conf"), "\x1b[0m")
 	fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "conf", "app.conf"), "\x1b[0m")
 	utils.WriteToFile(path.Join(appPath, "conf", "app.conf"),
 		strings.Replace(apiconf, "{{.Appname}}", path.Base(args[0]), -1))
+	fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "conf", "app_local.conf"), "\x1b[0m")
+	utils.WriteToFile(path.Join(appPath, "conf", "app_local.conf"),
+		strings.Replace(apiconfLocal, "{{.Appname}}", path.Base(args[0]), -1))
 
 	if generate.SQLConn != "" {
 		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "main.go"), "\x1b[0m")
@@ -1068,6 +1126,23 @@ func createAPI(cmd *commands.Command, args []string) int {
 		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "service-logics", "health-checks", "redis.go"), "\x1b[0m")
 		utils.WriteToFile(path.Join(appPath, "service-logics", "health-checks", "redis.go"),
 			strings.Replace(ServiceRedisHealthCheckTpl, "{{.Appname}}", packPath, -1))
+
+		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "bee.json"), "\x1b[0m")
+		utils.WriteToFile(path.Join(appPath, "bee.json"),
+			strings.Replace(beeConfigTpl, "{{.Appname}}", packPath, -1))
+
+		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, ".gitignore"), "\x1b[0m")
+		utils.WriteToFile(path.Join(appPath, ".gitignore"),
+			strings.Replace(gitIgnoreTpl, "{{.Appname}}", packPath, -1))
+
+		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "Dockerfile"), "\x1b[0m")
+		utils.WriteToFile(path.Join(appPath, "Dockerfile"),
+			strings.Replace(dockerFileTpl, "{{.Appname}}", packPath, -1))
+
+		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, ".dockerignore"), "\x1b[0m")
+		utils.WriteToFile(path.Join(appPath, ".dockerignore"),
+			strings.Replace(dockerIgnoreTpl, "{{.Appname}}", packPath, -1))
+
 	}
 	beeLogger.Log.Success("New API successfully created!")
 	return 0
