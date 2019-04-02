@@ -60,27 +60,120 @@ var CmdApiapp = &commands.Command{
 	Run:    createAPI,
 }
 var apiconf = `appname = {{.Appname}}
-httpport = 8080
-runmode = dev
+httpport = 8100
+runmode = "${DOCKERENV||dev}"
 autorender = false
 copyrequestbody = true
 EnableDocs = true
+urlPrefix1 = /{{.Appname}}
+DocsPath = /{{.Appname}}/docs
+
+EnableAdmin = true
+AdminAddr = ""
+AdminPort = 8103
+
+[session]
+sessionon = true
+
+[redis]
+host = lcoalhost:6391
+password = ********
+database = 0
+prefix = {{.Appname}}_
+
+[db]
+host = localhost:3306
+user = {{.Appname}}
+password = ******
+database = {{.Appname}}_db
+
+[smtp]
+host = smtp.163.com
+prot = 587
+user = ***@163.com
+password = ****
 `
 var apiMaingo = `package main
 
 import (
+	"{{.Appname}}/pkg/middleWares"
 	_ "{{.Appname}}/routers"
+	"log"
+	"net/http"
+
+	"os"
+
+	"{{.Appname}}/serviceLogics/HealthChecks"
 
 	"github.com/astaxie/beego"
+	"github.com/astaxie/beego/plugins/cors"
+	"github.com/astaxie/beego/toolbox"
+	"github.com/astaxie/beego/utils"
+	_ "github.com/jinzhu/gorm/dialects/mysql"
+	//"github.com/yimishiji/bee/pkg/db"
+	"github.com/yimishiji/bee/pkg/errors"
 )
+
+func init() {
+
+	//连接mysql数据库
+	//_, err := db.GetDbConnect()
+	//if err != nil {
+	//	log.Fatal("mysql Conn :", err)
+	//}
+	//defer conn.Close()
+
+	//连接redis
+	//_, err = db.GetRedisClient()
+	//if err != nil {
+	//	log.Fatal("redis Conn :", err)
+	//}
+	//defer client.Close()
+
+	//是否接受panic, 如果设置false 则不接受panic，向上层报错，然后自己接受panic信息；设置true beego会帮你接受panic
+	beego.BConfig.RecoverPanic = false
+	//是否将错误信息使用html格式打印出来, 设置false不使用html打印
+	beego.BConfig.EnableErrorsRender = false
+
+	toolbox.AddHealthCheck("database-mysql", &HealthChecks.DatabaseCheck{})
+	toolbox.AddHealthCheck("cache-server-redis", &HealthChecks.RedisCheck{})
+
+}
 
 func main() {
 	if beego.BConfig.RunMode == "dev" {
 		beego.BConfig.WebConfig.DirectoryIndex = true
-		beego.BConfig.WebConfig.StaticDir["/swagger"] = "swagger"
+		beego.BConfig.WebConfig.StaticDir[beego.AppConfig.String("DocsPath")] = "swagger"
 	}
-	beego.Run()
+
+	localConf := os.Getenv("GOPATH") + "/src/{{.Appname}}/conf/app_local.conf"
+	if utils.FileExists(localConf) {
+		beego.LoadAppConfig("ini", localConf)
+	}
+
+	//跨域请求配置
+	beego.InsertFilter("*", beego.BeforeRouter, cors.Allow(&cors.Options{
+		AllowAllOrigins:  true,
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Authorization", "Access-Control-Allow-Origin", "Access-Control-Allow-Headers", "Content-Type"},
+		ExposeHeaders:    []string{"Content-Length", "Access-Control-Allow-Origin", "Access-Control-Allow-Headers", "Content-Type"},
+		AllowCredentials: true,
+	}))
+
+	//错误提示
+	meihuError := errors.NewMeiHuError()
+	beego.ErrorHandler("404", meihuError.PageNotFound)
+	beego.ErrorHandler("500", meihuError.ServerInternalError)
+
+	//开启带中间件的web
+	beego.RunWithMiddleWares(":"+beego.AppConfig.String("httpport"), MeiHuHandler)
 }
+
+//中间件
+func MeiHuHandler(handler http.Handler) http.Handler {
+	return middleWares.NewMeiHuMiddleWare(handler)
+}
+
 `
 
 var apiMainconngo = `package main
@@ -139,7 +232,7 @@ func init() {
 }
 `
 
-var APIModels = `package models
+var APIModels = `package ObjectModel
 
 import (
 	"errors"
@@ -148,40 +241,40 @@ import (
 )
 
 var (
-	Objects map[string]*Object
+	ModelList map[string]*Model
 )
 
-type Object struct {
+type Model struct {
 	ObjectId   string
 	Score      int64
 	PlayerName string
 }
 
 func init() {
-	Objects = make(map[string]*Object)
-	Objects["hjkhsbnmn123"] = &Object{"hjkhsbnmn123", 100, "astaxie"}
-	Objects["mjjkxsxsaa23"] = &Object{"mjjkxsxsaa23", 101, "someone"}
+	ModelList = make(map[string]*Model)
+	ModelList["hjkhsbnmn123"] = &Model{"hjkhsbnmn123", 100, "astaxie"}
+	ModelList["mjjkxsxsaa23"] = &Model{"mjjkxsxsaa23", 101, "someone"}
 }
 
-func AddOne(object Object) (ObjectId string) {
+func AddOne(object Model) (ObjectId string) {
 	object.ObjectId = "astaxie" + strconv.FormatInt(time.Now().UnixNano(), 10)
-	Objects[object.ObjectId] = &object
+	ModelList[object.ObjectId] = &object
 	return object.ObjectId
 }
 
-func GetOne(ObjectId string) (object *Object, err error) {
-	if v, ok := Objects[ObjectId]; ok {
+func GetOne(ObjectId string) (object *Model, err error) {
+	if v, ok := ModelList[ObjectId]; ok {
 		return v, nil
 	}
 	return nil, errors.New("ObjectId Not Exist")
 }
 
-func GetAll() map[string]*Object {
-	return Objects
+func GetAll() map[string]*Model {
+	return ModelList
 }
 
 func Update(ObjectId string, Score int64) (err error) {
-	if v, ok := Objects[ObjectId]; ok {
+	if v, ok := ModelList[ObjectId]; ok {
 		v.Score = Score
 		return nil
 	}
@@ -189,12 +282,12 @@ func Update(ObjectId string, Score int64) (err error) {
 }
 
 func Delete(ObjectId string) {
-	delete(Objects, ObjectId)
+	delete(ModelList, ObjectId)
 }
 
 `
 
-var APIModels2 = `package models
+var APIModels2 = `package UserModel
 
 import (
 	"errors"
@@ -203,16 +296,16 @@ import (
 )
 
 var (
-	UserList map[string]*User
+	UserList map[string]*Model
 )
 
 func init() {
-	UserList = make(map[string]*User)
-	u := User{"user_11111", "astaxie", "11111", Profile{"male", 20, "Singapore", "astaxie@gmail.com"}}
+	UserList = make(map[string]*Model)
+	u := Model{"user_11111", "astaxie", "11111", Profile{"male", 20, "Singapore", "astaxie@gmail.com"}}
 	UserList["user_11111"] = &u
 }
 
-type User struct {
+type Model struct {
 	Id       string
 	Username string
 	Password string
@@ -226,24 +319,24 @@ type Profile struct {
 	Email   string
 }
 
-func AddUser(u User) string {
+func Add(u Model) string {
 	u.Id = "user_" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	UserList[u.Id] = &u
 	return u.Id
 }
 
-func GetUser(uid string) (u *User, err error) {
+func Get(uid string) (u *Model, err error) {
 	if u, ok := UserList[uid]; ok {
 		return u, nil
 	}
 	return nil, errors.New("User not exists")
 }
 
-func GetAllUsers() map[string]*User {
+func GetAll() map[string]*Model {
 	return UserList
 }
 
-func UpdateUser(uid string, uu *User) (a *User, err error) {
+func Update(uid string, uu *Model) (a *Model, err error) {
 	if u, ok := UserList[uid]; ok {
 		if uu.Username != "" {
 			u.Username = uu.Username
@@ -277,7 +370,7 @@ func Login(username, password string) bool {
 	return false
 }
 
-func DeleteUser(uid string) {
+func Delete(uid string) {
 	delete(UserList, uid)
 }
 `
@@ -285,7 +378,7 @@ func DeleteUser(uid string) {
 var apiControllers = `package controllers
 
 import (
-	"{{.Appname}}/models"
+	"{{.Appname}}/models/ObjectModel"
 	"encoding/json"
 
 	"github.com/astaxie/beego"
@@ -299,13 +392,13 @@ type ObjectController struct {
 // @Title Create
 // @Description create object
 // @Param	body		body 	models.Object	true		"The object content"
-// @Success 200 {string} models.Object.Id
+// @Success 200 {string} ObjectModel.Model.Object.Id
 // @Failure 403 body is empty
 // @router / [post]
 func (o *ObjectController) Post() {
-	var ob models.Object
+	var ob ObjectModel.Model
 	json.Unmarshal(o.Ctx.Input.RequestBody, &ob)
-	objectid := models.AddOne(ob)
+	objectid :=  ObjectModel.AddOne(ob)
 	o.Data["json"] = map[string]string{"ObjectId": objectid}
 	o.ServeJSON()
 }
@@ -313,13 +406,13 @@ func (o *ObjectController) Post() {
 // @Title Get
 // @Description find object by objectid
 // @Param	objectId		path 	string	true		"the objectid you want to get"
-// @Success 200 {object} models.Object
+// @Success 200 {object} ObjectModel.Model
 // @Failure 403 :objectId is empty
 // @router /:objectId [get]
 func (o *ObjectController) Get() {
 	objectId := o.Ctx.Input.Param(":objectId")
 	if objectId != "" {
-		ob, err := models.GetOne(objectId)
+		ob, err := ObjectModel.GetOne(objectId)
 		if err != nil {
 			o.Data["json"] = err.Error()
 		} else {
@@ -331,11 +424,11 @@ func (o *ObjectController) Get() {
 
 // @Title GetAll
 // @Description get all objects
-// @Success 200 {object} models.Object
+// @Success 200 {object} ObjectModel.Model
 // @Failure 403 :objectId is empty
 // @router / [get]
 func (o *ObjectController) GetAll() {
-	obs := models.GetAll()
+	obs := ObjectModel.GetAll()
 	o.Data["json"] = obs
 	o.ServeJSON()
 }
@@ -344,15 +437,15 @@ func (o *ObjectController) GetAll() {
 // @Description update the object
 // @Param	objectId		path 	string	true		"The objectid you want to update"
 // @Param	body		body 	models.Object	true		"The body"
-// @Success 200 {object} models.Object
+// @Success 200 {object} ObjectModel.Model
 // @Failure 403 :objectId is empty
 // @router /:objectId [put]
 func (o *ObjectController) Put() {
 	objectId := o.Ctx.Input.Param(":objectId")
-	var ob models.Object
+	var ob ObjectModel.Model
 	json.Unmarshal(o.Ctx.Input.RequestBody, &ob)
 
-	err := models.Update(objectId, ob.Score)
+	err := ObjectModel.Update(objectId, ob.Score)
 	if err != nil {
 		o.Data["json"] = err.Error()
 	} else {
@@ -369,7 +462,7 @@ func (o *ObjectController) Put() {
 // @router /:objectId [delete]
 func (o *ObjectController) Delete() {
 	objectId := o.Ctx.Input.Param(":objectId")
-	models.Delete(objectId)
+	ObjectModel.Delete(objectId)
 	o.Data["json"] = "delete success!"
 	o.ServeJSON()
 }
@@ -378,7 +471,7 @@ func (o *ObjectController) Delete() {
 var apiControllers2 = `package controllers
 
 import (
-	"{{.Appname}}/models"
+	"{{.Appname}}/models/UserModel"
 	"encoding/json"
 
 	"github.com/astaxie/beego"
@@ -392,23 +485,23 @@ type UserController struct {
 // @Title CreateUser
 // @Description create users
 // @Param	body		body 	models.User	true		"body for user content"
-// @Success 200 {int} models.User.Id
+// @Success 200 {int} UserModel.Model.Id
 // @Failure 403 body is empty
 // @router / [post]
 func (u *UserController) Post() {
-	var user models.User
+	var user UserModel.Model
 	json.Unmarshal(u.Ctx.Input.RequestBody, &user)
-	uid := models.AddUser(user)
+	uid := UserModel.Add(user)
 	u.Data["json"] = map[string]string{"uid": uid}
 	u.ServeJSON()
 }
 
 // @Title GetAll
 // @Description get all Users
-// @Success 200 {object} models.User
+// @Success 200 {object} UserModel.Model
 // @router / [get]
 func (u *UserController) GetAll() {
-	users := models.GetAllUsers()
+	users := UserModel.GetAll()
 	u.Data["json"] = users
 	u.ServeJSON()
 }
@@ -416,13 +509,13 @@ func (u *UserController) GetAll() {
 // @Title Get
 // @Description get user by uid
 // @Param	uid		path 	string	true		"The key for staticblock"
-// @Success 200 {object} models.User
+// @Success 200 {object} UserModel.Model
 // @Failure 403 :uid is empty
 // @router /:uid [get]
 func (u *UserController) Get() {
 	uid := u.GetString(":uid")
 	if uid != "" {
-		user, err := models.GetUser(uid)
+		user, err := UserModel.Get(uid)
 		if err != nil {
 			u.Data["json"] = err.Error()
 		} else {
@@ -435,16 +528,16 @@ func (u *UserController) Get() {
 // @Title Update
 // @Description update the user
 // @Param	uid		path 	string	true		"The uid you want to update"
-// @Param	body		body 	models.User	true		"body for user content"
-// @Success 200 {object} models.User
+// @Param	body		body 	UserModel.Model	true		"body for user content"
+// @Success 200 {object} UserModel.Model
 // @Failure 403 :uid is not int
 // @router /:uid [put]
 func (u *UserController) Put() {
 	uid := u.GetString(":uid")
 	if uid != "" {
-		var user models.User
+		var user UserModel.Model
 		json.Unmarshal(u.Ctx.Input.RequestBody, &user)
-		uu, err := models.UpdateUser(uid, &user)
+		uu, err := UserModel.Update(uid, &user)
 		if err != nil {
 			u.Data["json"] = err.Error()
 		} else {
@@ -462,7 +555,7 @@ func (u *UserController) Put() {
 // @router /:uid [delete]
 func (u *UserController) Delete() {
 	uid := u.GetString(":uid")
-	models.DeleteUser(uid)
+	UserModel.Delete(uid)
 	u.Data["json"] = "delete success!"
 	u.ServeJSON()
 }
@@ -477,7 +570,7 @@ func (u *UserController) Delete() {
 func (u *UserController) Login() {
 	username := u.GetString("username")
 	password := u.GetString("password")
-	if models.Login(username, password) {
+	if UserModel.Login(username, password) {
 		u.Data["json"] = "login success"
 	} else {
 		u.Data["json"] = "user not exist"
@@ -534,6 +627,323 @@ func TestGet(t *testing.T) {
 	})
 }
 
+`
+
+var middleWaresMain = `package middleWares
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"runtime"
+	"time"
+	"strings"
+
+	"github.com/astaxie/beego"
+	"github.com/astaxie/beego/logs"
+	"github.com/yimishiji/bee/pkg/base"
+	"{{.Appname}}/serviceLogics/UserService"
+)
+
+type MeiHuMiddleWare struct {
+	h http.Handler
+}
+
+func NewMeiHuMiddleWare(h http.Handler) *MeiHuMiddleWare {
+	return &MeiHuMiddleWare{
+		h: h,
+	}
+}
+
+//中间件
+func (this *MeiHuMiddleWare) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
+	//如果有panic错误，这个会接受一下，并返回到前端中
+	defer func() {
+		if recInfo := recover(); recInfo != nil {
+			var str string
+			//panic信息， 把interface 转换string
+			str = fmt.Sprint(recInfo) + "; "
+
+			//获取报错的代码行
+			for i := 1; ; i++ {
+				_, file, line, ok := runtime.Caller(i)
+				if !ok {
+					break
+				}
+				logs.Critical(fmt.Sprintf("%s:%d", file, line))
+				str = str + fmt.Sprintf("%s:%d; ", file, line)
+			}
+			//数据组装
+			resList := &base.Resp{
+				TimeTaken: 0,
+				Status:    0,
+				StatusTxt: str,
+				Results: []struct {
+				}{},
+				Links: "",
+			}
+			resList.Time = time.Now().Unix()
+
+			newByte, _ := json.Marshal(resList)
+			w.Write(newByte)
+		}
+	}()
+
+	//解析表单
+	//r.ParseForm()
+	//r.Form.Set("business_id", "1")
+
+	//把url中的横杠（-）去掉
+	//r.URL.Path = strings.Replace(r.URL.Path, "-", "", -1)
+
+	//验证操作权限
+	if this.checkOperate(r) == false {
+		//数据组装
+		resList := &base.Resp{
+			TimeTaken: 0,
+			Status:    base.ApiCode_OAUTH_FAIL,
+			StatusTxt: "operate fail",
+			Results: []struct {
+			}{},
+			Links: "",
+		}
+		resList.Time = time.Now().Unix()
+		newByte, _ := json.Marshal(resList)
+		w.Write(newByte)
+		return
+	}
+
+	//向下传递
+	this.h.ServeHTTP(w, r)
+}
+
+func (this *MeiHuMiddleWare) checkOperate(r *http.Request) bool {
+	//判断此url是不是不需要token验证
+	OperateKey := getOperateKey(r)
+	if isNoTokenUrl(OperateKey) {
+		return true
+	}
+
+	//预请求跳过权限认证
+	if r.Method == "OPTIONS" {
+		return true
+	}
+
+	//关闭权限验证
+	//return true
+
+	//验证用户url访问权限
+	return this.VerifyUserOperate(r, OperateKey)
+}
+
+//登录用户权限验证p
+func (this *MeiHuMiddleWare) VerifyUserOperate(r *http.Request, OerateKey string) bool {
+	token := r.Header.Get("Authorization")
+	token = strings.Replace(token, "Bearer ", "", 1)
+	path := r.URL.Path
+	//
+	//beego.Info(path, token)
+	////API文挡路径
+	//if strings.Contains(path, beego.AppConfig.String("DocsPath")) {
+	//	beego.Info(path, beego.AppConfig.String("DocsPath"))
+	//	return true
+	//}
+
+	if UserService.LoginByAccessToken(token) == false {
+		return false
+	}
+
+	//全部登录用户都可访问列表
+	if isAllowAllTokenUrl(OerateKey) {
+		return true
+	}
+
+	//api文挡请求的跳过授权
+	//if strings.HasSuffix(r.Referer(), beego.AppConfig.String("DocsPath")+"/") && r.Method == "GET" {
+	//	return true
+	//}
+
+	//自定义权限验证
+	path = OerateKey
+	beego.Info(path)
+	//if operateList, err := serviceLogics.GetOperateListByAccesstoken(token); err == nil {
+	//	for _, op := range operateList {
+	//		if strings.Trim(op.RightAction, "") == path {
+	//			return true
+	//		}
+	//	}
+	//	beego.Warn("invalid request:" + path)
+	//} else {
+	//	beego.Warn("invalid request:" + path)
+	//	beego.Warn("get operate list err:", err)
+	//}
+	return false
+}
+
+func getOperateKey(r *http.Request) string {
+	if r.URL.Path == "" {
+		return ""
+	}
+
+	prefix := "/{{.Appname}}"
+	path := r.URL.Path
+	path = strings.Replace(path, prefix, "", 1)
+	path = strings.Replace(path, "/v1", "", 1)
+	path = strings.TrimRight(path, "/1234567890")
+	path = "[" + r.Method + "]" + path
+	return path
+}
+`
+var middleWaresMainNotoken = `package middleWares
+
+//不需要token认证的url列表
+var noTokenUrlList = map[string]bool{
+	"[POST]/user/login":true,
+}
+
+//是否不需要token验证的url地址
+func isNoTokenUrl(url string) bool {
+	if url == "" {
+		return false
+	}
+	//判断key是否存在
+	if _, ok := noTokenUrlList[url]; ok {
+		return true
+	}
+
+	return false
+}
+`
+var middleWaresMainAlltoken = `package middleWares
+
+//不需要token认证的url列表
+var allAllowTokenUrlList = map[string]bool{
+	"[POST]/object": 		true,
+	"[GET]/object":			true,
+	"[PUT]/object":			true,
+	"[DELETE]/object":  	true,
+	"[POST]/user":			true,
+	"[GET]/user":			true,
+	"[PUT]/user":			true,
+	"[DELETE]/user":		true,
+	"[GET]/user/logout": 	true,
+}
+
+//是否不需要token验证的url地址
+func isAllowAllTokenUrl(url string) bool {
+	if url == "" {
+		return false
+	}
+	//判断key是否存在
+	if _, ok := allAllowTokenUrlList[url]; ok {
+		return true
+	}
+
+	return false
+}
+`
+var UserServiceTpl = `package UserService
+
+import (
+	"github.com/yimishiji/bee/pkg/base"
+	"github.com/yimishiji/bee/pkg/db"
+)
+
+//token登录
+func LoginByAccessToken(token string) bool {
+	if token == "" {
+		return false
+	}
+
+	user := new(base.User)
+	user.AccessToken = token
+
+	userInfoCacheKey := token + ":info"
+	if err := db.Redis.Get(userInfoCacheKey).Err(); err == nil {
+		return true
+	}
+
+	//if userInfo, err := rms.GetUserInfoByToken(token, "{{.Appname}}"); err == nil {
+	//	//beego.Info(userInfo)
+	//	db.Redis.Set(userInfoCacheKey, userInfo, time.Duration(336)*time.Hour)
+	//} else {
+	//	beego.Error(err)
+	//	return false
+	//}
+
+	//if userRight, err := rms.GetRightsByTokenAndPlatformName(token, "{{.Appname}}"); err == nil {
+	//	userInfoCacheKey := token + ":right"
+	//	db.Redis.Set(userInfoCacheKey, userRight, time.Duration(336)*time.Hour)
+	//} else {
+	//	return false
+	//}
+
+	return true
+}
+
+////密码登录后写入session
+//func LoginSave(res *RmsApiStructs.UserLoginRes) {
+//	token := res.Token.AccessToken
+//	userInfoRedisKey := token + ":info"
+//	userTokenRedisKey := token + ":token"
+//	userRightRedisKey := token + ":right"
+//
+//	db.Redis.Set(userInfoRedisKey, &res.User, time.Duration(336)*time.Hour)
+//	db.Redis.Set(userTokenRedisKey, &res.Token, time.Duration(336)*time.Hour)
+//	db.Redis.Set(userRightRedisKey, &res.RoleRight, time.Duration(336)*time.Hour)
+//}
+
+// 获取用户的操作权限
+//func GetOperateListByAccesstoken(token string) (operateList []RmsApiStructs.RoleRight, err error) {
+//
+//	token = token + ":right"
+//	data, err := db.Redis.Get(token).Result()
+//	if err != nil {
+//		return operateList, err
+//	}
+//	err = json.Unmarshal([]byte(data), &operateList)
+//	if err != nil {
+//		fmt.Println("some error")
+//	}
+//
+//	if beego.BConfig.RunMode == "prod" {
+//		return operateList, err
+//	}
+//
+//	operateList = append(operateList, RmsApiStructs.RoleRight{
+//		RightName:   "WorkflowBpmn-list",
+//		RightAction: "[GET]/workflow-bpmn",
+//		FrontURL:    "workflow-bpmn",
+//	})
+//	return operateList, nil
+//}
+
+`
+
+var ServiceDatabaseHealthCheckTpl = `package HealthChecks
+
+import "github.com/yimishiji/bee/pkg/db"
+
+type DatabaseCheck struct {
+}
+
+//数据库状态检查
+func (c DatabaseCheck) Check() error {
+	return db.Conn.DB().Ping()
+}
+`
+var ServiceRedisHealthCheckTpl = `package HealthChecks
+
+import "github.com/yimishiji/bee/pkg/db"
+
+type RedisCheck struct {
+}
+
+//redis状态检查
+func (c *RedisCheck) Check() error {
+	return db.Redis.Ping()
+}
 `
 
 func init() {
@@ -606,12 +1016,12 @@ func createAPI(cmd *commands.Command, args []string) int {
 		os.Mkdir(path.Join(appPath, "routers"), 0755)
 		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "routers")+string(path.Separator), "\x1b[0m")
 
-		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "controllers", "object.go"), "\x1b[0m")
-		utils.WriteToFile(path.Join(appPath, "controllers", "object.go"),
+		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "controllers", "ObjectController.go"), "\x1b[0m")
+		utils.WriteToFile(path.Join(appPath, "controllers", "objectController.go"),
 			strings.Replace(apiControllers, "{{.Appname}}", packPath, -1))
 
-		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "controllers", "user.go"), "\x1b[0m")
-		utils.WriteToFile(path.Join(appPath, "controllers", "user.go"),
+		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "controllers", "UserController.go"), "\x1b[0m")
+		utils.WriteToFile(path.Join(appPath, "controllers", "userController.go"),
 			strings.Replace(apiControllers2, "{{.Appname}}", packPath, -1))
 
 		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "tests", "default_test.go"), "\x1b[0m")
@@ -622,15 +1032,43 @@ func createAPI(cmd *commands.Command, args []string) int {
 		utils.WriteToFile(path.Join(appPath, "routers", "router.go"),
 			strings.Replace(apirouter, "{{.Appname}}", packPath, -1))
 
-		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "models", "object.go"), "\x1b[0m")
-		utils.WriteToFile(path.Join(appPath, "models", "object.go"), APIModels)
+		os.Mkdir(path.Join(appPath, "models", "ObjectModel"), 0755)
+		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "models", "ObjectModel", "model.go"), "\x1b[0m")
+		utils.WriteToFile(path.Join(appPath, "models", "ObjectModel", "model.go"), APIModels)
 
-		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "models", "user.go"), "\x1b[0m")
-		utils.WriteToFile(path.Join(appPath, "models", "user.go"), APIModels2)
+		os.Mkdir(path.Join(appPath, "models", "UserModel"), 0755)
+		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "models", "UserModel", "model.go"), "\x1b[0m")
+		utils.WriteToFile(path.Join(appPath, "models", "UserModel", "model.go"), APIModels2)
 
 		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "main.go"), "\x1b[0m")
 		utils.WriteToFile(path.Join(appPath, "main.go"),
 			strings.Replace(apiMaingo, "{{.Appname}}", packPath, -1))
+
+		os.Mkdir(path.Join(appPath, "pkg"), 0755)
+		os.Mkdir(path.Join(appPath, "pkg", "middleWares"), 0755)
+		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "pkg", "middleWares", "middleware.go"), "\x1b[0m")
+		utils.WriteToFile(path.Join(appPath, "pkg", "middleWares", "middleware.go"),
+			strings.Replace(middleWaresMain, "{{.Appname}}", packPath, -1))
+
+		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "pkg", "middleWares", "allAllowTokenUrlList.go"), "\x1b[0m")
+		utils.WriteToFile(path.Join(appPath, "pkg", "middleWares", "allAllowTokenUrlList.go"), middleWaresMainNotoken)
+
+		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "pkg", "middleWares", "noTokenUrlList.go"), "\x1b[0m")
+		utils.WriteToFile(path.Join(appPath, "pkg", "middleWares", "noTokenUrlList.go"), middleWaresMainAlltoken)
+
+		os.Mkdir(path.Join(appPath, "serviceLogics"), 0755)
+		os.Mkdir(path.Join(appPath, "serviceLogics", "UserService"), 0755)
+		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "serviceLogics", "UserService", "user.go"), "\x1b[0m")
+		utils.WriteToFile(path.Join(appPath, "serviceLogics", "UserService", "user.go"),
+			strings.Replace(UserServiceTpl, "{{.Appname}}", packPath, -1))
+
+		os.Mkdir(path.Join(appPath, "serviceLogics", "HealthChecks"), 0755)
+		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "serviceLogics", "HealthChecks", "dataBaseCheck.go"), "\x1b[0m")
+		utils.WriteToFile(path.Join(appPath, "serviceLogics", "HealthChecks", "dataBaseCheck.go"),
+			strings.Replace(ServiceDatabaseHealthCheckTpl, "{{.Appname}}", packPath, -1))
+		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "serviceLogics", "HealthChecks", "redisCheck.go"), "\x1b[0m")
+		utils.WriteToFile(path.Join(appPath, "serviceLogics", "HealthChecks", "redisCheck.go"),
+			strings.Replace(ServiceRedisHealthCheckTpl, "{{.Appname}}", packPath, -1))
 	}
 	beeLogger.Log.Success("New API successfully created!")
 	return 0
