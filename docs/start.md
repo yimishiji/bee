@@ -31,27 +31,47 @@ bee api app-test
 
 ### 项目基本目录结构说明
 
+入口文件
+>- /main.go 
 
+配置目录
+>- conf
+>- /conf/app.conf
+>- /conf/app_local.conf         本地化配置
 
-| /main.go                                      | 入口文件                   |           
-| /conf                                         | 配置目录                   |           
-| /conf/app.conf                                |                           |        
-| /tests                                        | 测试代码                   |           
-| /tests/default_test.go                        |                           |        
-| /routers/                                     | 路由层                     |          
-| /routers/router.go                            |                           |        
-| /controllers                                  | 控制器层                   |           
-| /controllers/object.go                        |                           |        
-| /controllers/user.go                          |                           |        
-| /models                                       | 模型层                     |          
-| /models/object/model.go                       |                           |        
-| /models/user/model.go                         |                           |        
-| /pkg/middle-wares/middleware.go               | 中间件                     |          
-| /pkg/middle-wares/allow-all.go                | 开放访问的请求配置           |              
-| /pkg/middle-wares/allow-token.go              | 登录用户即可访问的请求配置    |                 
-| /service-logics                               | 服务层                     |          
-| /service-logics/user/user.go                  |                           |        
-| /service-logics/health-checks                 | 健康检察验证器              |             
-| /service-logics/health-checks/database.go     | 数据库连接检查              |             
-| /service-logics/health-checks/redis.go        | redis连接检查              |           
-                                                 
+测试代码
+>- /tests
+>- /tests/default_test.go
+
+路由层
+>- /routers
+>- /routers/router.go
+
+控制器层
+>- /controllers
+>- /controllers/object.go
+>- /controllers/user.go
+
+模型层
+>- /models
+>- /models/object/model.go
+>- /models/user/model.go
+
+ 模型对应的表结构
+>- /models/table-structs
+
+pkg其它类包
+>- /pkg/middle-wares/middleware.go           中间件
+>- /pkg/middle-wares/allow-all.go            开放访问的请求配置
+>- /pkg/middle-wares/allow-token.go          登录用户即可访问的请求配置
+
+业务逻辑层
+>- /service-logics                                    
+>- /service-logics/user/user.go               
+   
+健康检察验证器
+>- /service-logics/health-checks                  
+>- /service-logics/health-checks/database.go  数据库连接检查
+>- /service-logics/health-checks/redis.go     redis连接检查        
+
+                      
