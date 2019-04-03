@@ -124,7 +124,7 @@ add to vue menu
 - 一般model，与表结构层一对一继承，可扩展些层，可多个一般model层对应同一个表结构层。
 - 可声明关连关系，关连表时可对应关连多个表结构层，也可以关连其它一般model层。
 - 一般model会自动分组，表以下划线分隔，如果第一部分相同，则会分到同一目录下。
-- model层 关连原理 [generate-appcode.md](generate-appcode.md)
+- model层 关连原理 [model-rels.md](model-rels.md)
 
 ### controller控制器层
 - 申请filter过虑器
