@@ -777,17 +777,17 @@ func (this *MeiHuMiddleWare) VerifyUserOperate(r *http.Request, OerateKey string
 	//自定义权限验证
 	path = OerateKey
 	beego.Info(path)
-	//if operateList, err := serviceLogics.GetOperateListByAccesstoken(token); err == nil {
-	//	for _, op := range operateList {
-	//		if strings.Trim(op.RightAction, "") == path {
-	//			return true
-	//		}
-	//	}
-	//	beego.Warn("invalid request:" + path)
-	//} else {
-	//	beego.Warn("invalid request:" + path)
-	//	beego.Warn("get operate list err:", err)
-	//}
+	if operateList, err := UserService.GetOperateListByAccesstoken(token); err == nil {
+		for _, op := range operateList {
+			if strings.Trim(op.RightAction, "") == path {
+				return true
+			}
+		}
+		beego.Warn("invalid request:" + path)
+	} else {
+		beego.Warn("invalid request:" + path)
+		beego.Warn("get operate list err:", err)
+	}
 	return false
 }
 
@@ -858,7 +858,13 @@ var UserServiceTpl = `package UserService
 import (
 	"github.com/yimishiji/bee/pkg/base"
 	"github.com/yimishiji/bee/pkg/db"
+	"github.com/astaxie/beego"
+	"encoding/json"
 )
+
+type RoleRight struct {
+	RightAction string
+}
 
 //token登录
 func LoginByAccessToken(token string) bool {
@@ -905,29 +911,28 @@ func LoginByAccessToken(token string) bool {
 //}
 
 // 获取用户的操作权限
-//func GetOperateListByAccesstoken(token string) (operateList []RmsApiStructs.RoleRight, err error) {
-//
-//	token = token + ":right"
-//	data, err := db.Redis.Get(token).Result()
-//	if err != nil {
-//		return operateList, err
-//	}
-//	err = json.Unmarshal([]byte(data), &operateList)
-//	if err != nil {
-//		fmt.Println("some error")
-//	}
-//
-//	if beego.BConfig.RunMode == "prod" {
-//		return operateList, err
-//	}
-//
-//	operateList = append(operateList, RmsApiStructs.RoleRight{
-//		RightName:   "WorkflowBpmn-list",
-//		RightAction: "[GET]/workflow-bpmn",
-//		FrontURL:    "workflow-bpmn",
-//	})
-//	return operateList, nil
-//}
+func GetOperateListByAccesstoken(token string) (operateList []RoleRight, err error) {
+
+	token = token + ":right"
+	data, err := db.Redis.Get(token).Result()
+	if err != nil {
+		return operateList, err
+	}
+	err = json.Unmarshal([]byte(data), &operateList)
+	if err != nil {
+		beego.Error("some error")
+	}
+
+	if beego.BConfig.RunMode == "prod" {
+		return operateList, err
+	}
+
+	//operateList = append(operateList, RoleRight{
+	//	RightAction: "[GET]/object",
+	//})
+
+	return operateList, nil
+}
 
 `
 

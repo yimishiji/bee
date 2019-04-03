@@ -88,3 +88,6 @@ git版本控制忽略文件列表
 docker描述文件,及docker编译时的忽略文件列表
 >- Dockerfile
 >- .dockerignore
+
+### generate appcode 自动生成代码工具改造，
+[generate appcode -level=4](generate-appcode.md).

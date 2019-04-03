@@ -325,6 +325,9 @@ func gen(dbms, connStr string, mode byte, selectedTableNames map[string]bool, ap
 		mvcPath.VuePath = path.Join(apppath, "vue/src/components")
 		mvcPath.FilterPath = path.Join(apppath, "filters")
 
+		//算成vue文件目录
+		mkdirs(apppath, "vue", "src", "components")
+
 		createPaths(mode, mvcPath)
 		pkgPath := getPackagePath(apppath)
 		writeSourceFiles(pkgPath, tables, mode, mvcPath)
@@ -752,7 +755,7 @@ func writeSourceFiles(pkgPath string, tables []*Table, mode byte, paths *MvcPath
 		beeLogger.Log.Info("Creating controller files...")
 		writeControllerFiles(tables, paths.ControllerPath, pkgPath)
 
-		beeLogger.Log.Info("Creating controller files...")
+		beeLogger.Log.Info("Creating filter files...")
 		writeFilterFiles(tables, paths.FilterPath, pkgPath)
 
 	}
@@ -761,7 +764,7 @@ func writeSourceFiles(pkgPath string, tables []*Table, mode byte, paths *MvcPath
 		writeRouterFile(tables, paths.RouterPath, pkgPath)
 	}
 	if (OVue & mode) == OVue {
-		beeLogger.Log.Info("Creating router files...")
+		beeLogger.Log.Info("Creating vue files...")
 		writeVueControllerIndex(tables, paths.VuePath, pkgPath)
 	}
 
@@ -775,14 +778,25 @@ func writeModelFiles(tables []*Table, mPath string, pkgPath string) {
 	w := colors.NewColorWriter(os.Stdout)
 
 	for _, tb := range tables {
-		filename := getFileName(tb.Name)
-		cBase := mPath + string(os.PathSeparator) + filename + "Model"
-		os.Mkdir(cBase, 0777)
 
-		cBaseTableStruct := mPath + string(os.PathSeparator) + "TableStructs"
+		cBaseTableStruct := mPath + string(os.PathSeparator) + "table-structs"
 		os.Mkdir(cBaseTableStruct, 0777)
 
-		fpath := path.Join(cBase, "Model.go")
+		namespce := strings.Split(strings.ToLower(tb.Name), "_")
+		filename := strings.Join(namespce, "-")
+
+		//model文件目录结构
+		var filePathArr []string
+		filePathArr = append(filePathArr, mPath)
+		filePathArr = append(filePathArr, namespce[0])
+		if len(namespce) >= 1 {
+			subDir := strings.Join(namespce[1:], "-")
+			filePathArr = append(filePathArr, subDir)
+		}
+		mkdirs(filePathArr...)
+		filePathArr = append(filePathArr, "model.go")
+		fpath := path.Join(filePathArr...)
+
 		var f *os.File
 		var err error
 		if utils.IsExist(fpath) {
@@ -876,8 +890,18 @@ func writeControllerFiles(tables []*Table, cPath string, pkgPath string) {
 		if tb.Pk == "" {
 			continue
 		}
-		filename := getFileName(tb.Name)
-		fpath := path.Join(cPath, filename+"Controller.go")
+
+		//控制器文件名
+		namespce := strings.Split(strings.ToLower(tb.Name), "_")
+		filename := strings.Join(namespce, "-")
+		fpath := path.Join(cPath, filename+".go")
+
+		//相对应的fitler,model子目录名
+		subPath := namespce[0]
+		if len(namespce) > 1 {
+			subPath = path.Join(subPath, strings.Join(namespce[1:], "-"))
+		}
+
 		var f *os.File
 		var err error
 		if utils.IsExist(fpath) {
@@ -959,6 +983,7 @@ func writeControllerFiles(tables []*Table, cPath string, pkgPath string) {
 		fileStr = strings.Replace(fileStr, "{{createAuto}}", createAuto, -1)
 		fileStr = strings.Replace(fileStr, "{{updateAuto}}", updateAuto, -1)
 		fileStr = strings.Replace(fileStr, "{{pkg}}", pkgList, -1)
+		fileStr = strings.Replace(fileStr, "{{subPath}}", subPath, -1)
 
 		if _, err := f.WriteString(fileStr); err != nil {
 			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpath, err)
@@ -976,6 +1001,16 @@ func writeControllerFiles(tables []*Table, cPath string, pkgPath string) {
 	notirceMsgArr = append(notirceMsgArr, "add to operate list:\n"+strings.Join(operateListArr, ""))
 }
 
+func mkdirs(namespce ...string) {
+	namespceLen := len(namespce)
+
+	for i := namespceLen; i >= 0; i-- {
+		var spaces []string
+		spaces = append(spaces, namespce[:namespceLen-i]...)
+		os.Mkdir(path.Join(spaces...), 0777)
+	}
+}
+
 // writeControllerFiles generates controller files
 func writeFilterFiles(tables []*Table, cPath string, pkgPath string) {
 	w := colors.NewColorWriter(os.Stdout)
@@ -984,11 +1019,19 @@ func writeFilterFiles(tables []*Table, cPath string, pkgPath string) {
 		if tb.Pk == "" {
 			continue
 		}
-		filename := getFileName(tb.Name)
 
-		cBase := cPath + string(os.PathSeparator) + filename + "Filter"
-		os.Mkdir(cBase, 0777)
-		fpath := path.Join(cBase, "InputFilter.go")
+		namespce := strings.Split(strings.ToLower(tb.Name), "_")
+		//文件目录结构
+		var filePathArr []string
+		filePathArr = append(filePathArr, cPath)
+		filePathArr = append(filePathArr, namespce[0])
+		if len(namespce) >= 1 {
+			subDir := strings.Join(namespce[1:], "-")
+			filePathArr = append(filePathArr, subDir)
+		}
+		mkdirs(filePathArr...)
+		filePathArr = append(filePathArr, "input.go")
+		fpath := path.Join(filePathArr...)
 
 		var f *os.File
 		var err error
@@ -1114,14 +1157,15 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		if tb.Pk == "" {
 			continue
 		}
-		vueComponentPath := strings2.LowerCamelCase(tb.Name)
+		//vueComponentPath := strings2.LowerCamelCase(tb.Name)
 		pageUrl := strings2.UrlStyleString(tb.Name)
+		vueComponentPath := pageUrl
 
 		cBase := cPath + string(os.PathSeparator) + vueComponentPath
 		os.Mkdir(cBase, 0777)
 
 		//列表
-		fpathIndex := path.Join(cBase, "Index.vue")
+		fpathIndex := path.Join(cBase, "index.vue")
 		var f *os.File
 		var err error
 		if utils.IsExist(fpathIndex) {
@@ -1289,10 +1333,9 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		}
 		utils.CloseFile(f)
 		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpathIndex, "\x1b[0m")
-		utils.FormatSourceCode(fpathIndex)
 
 		//添加组件
-		fpathIndex = path.Join(cBase, "CreateComponent.vue")
+		fpathIndex = path.Join(cBase, "create-component.vue")
 		if utils.IsExist(fpathIndex) {
 			beeLogger.Log.Warnf("'%s' already exists. Do you want to overwrite it? [Yes|No] ", fpathIndex)
 			if utils.AskForConfirmation() {
@@ -1322,14 +1365,13 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		fileStr = strings.Replace(fileStr, "{{pageUrl}}", pageUrl, -1)
 		fileStr = strings.Replace(fileStr, "{{createSubmitDataFix}}", createSubmitDataFix, -1)
 		if _, err := f.WriteString(fileStr); err != nil {
-			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpathIndex, err)
+			beeLogger.Log.Fatalf("Could not write create-component file to '%s': %s", fpathIndex, err)
 		}
 		utils.CloseFile(f)
 		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpathIndex, "\x1b[0m")
-		utils.FormatSourceCode(fpathIndex)
 
 		//编辑组件
-		fpathIndex = path.Join(cBase, "EditComponent.vue")
+		fpathIndex = path.Join(cBase, "edit-component.vue")
 		if utils.IsExist(fpathIndex) {
 			beeLogger.Log.Warnf("'%s' already exists. Do you want to overwrite it? [Yes|No] ", fpathIndex)
 			if utils.AskForConfirmation() {
@@ -1360,14 +1402,13 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		fileStr = strings.Replace(fileStr, "{{pageUrl}}", pageUrl, -1)
 
 		if _, err := f.WriteString(fileStr); err != nil {
-			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpathIndex, err)
+			beeLogger.Log.Fatalf("Could not write edit-component file to '%s': %s", fpathIndex, err)
 		}
 		utils.CloseFile(f)
 		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpathIndex, "\x1b[0m")
-		utils.FormatSourceCode(fpathIndex)
 
 		//列显示设置组件
-		fpathIndex = path.Join(cBase, "ColSettingComponent.vue")
+		fpathIndex = path.Join(cBase, "colsetting-component.vue")
 		if utils.IsExist(fpathIndex) {
 			beeLogger.Log.Warnf("'%s' already exists. Do you want to overwrite it? [Yes|No] ", fpathIndex)
 			if utils.AskForConfirmation() {
@@ -1389,11 +1430,10 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		}
 		fileStr = strings.Replace(vueColSettingComponentTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
 		if _, err := f.WriteString(fileStr); err != nil {
-			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpathIndex, err)
+			beeLogger.Log.Fatalf("Could not write vue colsetting-component file to '%s': %s", fpathIndex, err)
 		}
 		utils.CloseFile(f)
 		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpathIndex, "\x1b[0m")
-		utils.FormatSourceCode(fpathIndex)
 
 		//vue 路由规则
 		fileStr = strings.Replace(vueRuleTPL, "{{pageUrl}}", pageUrl, -1)
@@ -1519,7 +1559,7 @@ func (t *{{modelName}}) TableName() string {
 import (
 	"strings"
 	{{timePkg}}
-	"{{pkgPath}}/models/TableStructs"
+	TableStructs "{{pkgPath}}/models/table-structs"
     "github.com/yimishiji/bee/pkg/db"
 )
 
@@ -1615,8 +1655,8 @@ func Delete(id int) (err error) {
 	CtrlTPL = `package controllers
 
 import (
-	"{{pkgPath}}/models/{{ctrlName}}Model"
-    "{{pkgPath}}/filters/{{ctrlName}}Filter"
+	{{ctrlName}}Model "{{pkgPath}}/models/{{subPath}}"
+    {{ctrlName}}Filter "{{pkgPath}}/filters/{{subPath}}"
 	{{pkg}}	
 
     "github.com/yimishiji/bee/pkg/base"
@@ -1931,9 +1971,9 @@ func init() {
 <script>
     import {hostName} from '../../config/api'
     import {formatDate} from '../../common/date'
-    import createVue from './CreateComponent.vue'
-    import editVue from './EditComponent.vue'
-    import colSetting from './ColSettingComponent.vue'
+    import createVue from './create-component.vue'
+    import editVue from './edit-component.vue'
+    import colSetting from './colsetting-component.vue'
 
     const IndexApi = hostName+"v1/{{pageUrl}}";
     const DeleteAPI = hostName+"v1/{{pageUrl}}";
@@ -2373,30 +2413,22 @@ func init() {
 `
 	operateListTPL = `
 	operateList = append(operateList, RoleRight{
-		RightName:   "{{ctrlName}}-list",
 		RightAction: "[GET]/{{pageUrl}}",
-		FrontURL:    "{{pageUrl}}",
 	})
 	operateList = append(operateList, RoleRight{
-		RightName:   "{{ctrlName}}-create",
 		RightAction: "[POST]/{{pageUrl}}",
-		FrontURL:    "{{pageUrl}}",
 	})
 	operateList = append(operateList, RoleRight{
-		RightName:   "{{ctrlName}}-update",
 		RightAction: "[PUT]/{{pageUrl}}",
-		FrontURL:    "{{pageUrl}}",
 	})
 	operateList = append(operateList, RoleRight{
-		RightName:   "{{ctrlName}}-delete",
 		RightAction: "[DELETE]/{{pageUrl}}",
-		FrontURL:    "{{pageUrl}}",
 	})
 `
 	vueRuleTPL = `
               {
                   path: '/{{pageUrl}}/index',
-                  component: name => require(['../components/{{filPath}}/Index'], name),
+                  component: name => require(['../components/{{filPath}}/index'], name),
               },`
 	menuListTPL = `
                     {"name":"{{ctrlName}}","url":"/{{pageUrl}}/index","icon":"bars"},`
