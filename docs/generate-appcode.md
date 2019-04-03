@@ -29,24 +29,14 @@ ______
 | |_/ /|  __/|  __/
 \____/  \___| \___| v1.10.0
 14:46:24 INFO     ▶ 0001 Using 'mysql' as 'SQLDriver'
-14:46:24 INFO     ▶ 0002 Using 'bpm-api:Ay4tghdU@tcp(yimishiji-mysql.com:3306)/ms_bpm' as 'SQLConn'
-14:46:24 INFO     ▶ 0003 Using 'member_coupon,member_deposit_logs' as 'Tables'
-14:46:24 INFO     ▶ 0004 Using '4' as 'Level'
-14:46:24 INFO     ▶ 0005 Analyzing database tables...
-14:46:24 INFO     ▶ 0006 Creating model files...
         create   models\member\coupon\model.go
         create   models\table-structs\member-coupon.go
         create   models\member\deposit-logs\model.go
         create   models\table-structs\member-deposit-logs.go
-14:46:25 INFO     ▶ 0007 Creating controller files...
         create   controllers\member-coupon.go
         create   controllers\member-deposit-logs.go
-14:46:25 INFO     ▶ 0008 Creating filter files...
         create   filters\member\coupon\input.go
         create   filters\member\deposit-logs\input.go
-14:46:25 INFO     ▶ 0009 Creating router files...
-14:46:25 WARN     ▶ 0010 Skipped create file 'routers\router.go'
-14:46:25 INFO     ▶ 0011 Creating vue files...
         create   vue\src\components\member-coupon\index.vue
         create   vue\src\components\member-coupon\create-component.vue
         create   vue\src\components\member-coupon\edit-component.vue
