@@ -1408,19 +1408,11 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpathIndex, "\x1b[0m")
 
 		//列显示设置组件
-		fpathIndex = path.Join(cBase, "colsetting-component.vue")
+		commonPath := path.Join(cPath, "common")
+		os.Mkdir(commonPath, 0777)
+		fpathIndex = path.Join(commonPath, "colsetting-component.vue")
 		if utils.IsExist(fpathIndex) {
-			beeLogger.Log.Warnf("'%s' already exists. Do you want to overwrite it? [Yes|No] ", fpathIndex)
-			if utils.AskForConfirmation() {
-				f, err = os.OpenFile(fpathIndex, os.O_RDWR|os.O_TRUNC, 0666)
-				if err != nil {
-					beeLogger.Log.Warnf("%s", err)
-					continue
-				}
-			} else {
-				beeLogger.Log.Warnf("Skipped create file '%s'", fpathIndex)
-				continue
-			}
+			continue
 		} else {
 			f, err = os.OpenFile(fpathIndex, os.O_CREATE|os.O_RDWR, 0666)
 			if err != nil {
@@ -1428,8 +1420,7 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 				continue
 			}
 		}
-		fileStr = strings.Replace(vueColSettingComponentTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
-		if _, err := f.WriteString(fileStr); err != nil {
+		if _, err := f.WriteString(vueColSettingComponentTPL); err != nil {
 			beeLogger.Log.Fatalf("Could not write vue colsetting-component file to '%s': %s", fpathIndex, err)
 		}
 		utils.CloseFile(f)
@@ -1973,7 +1964,7 @@ func init() {
     import {formatDate} from '../../common/date'
     import createVue from './create-component.vue'
     import editVue from './edit-component.vue'
-    import colSetting from './colsetting-component.vue'
+    import colSetting from './../common/colsetting-component.vue'
 
     const IndexApi = hostName+"v1/{{pageUrl}}";
     const DeleteAPI = hostName+"v1/{{pageUrl}}";
