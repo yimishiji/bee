@@ -1244,15 +1244,12 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 				// Add index page customRules
 				tlpstr = strings.Replace(VueCreateCustomRulesComponentTPL, "{{fieldName}}", col.Tag.Column, -1)
 				tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
+				var ruleItems []string
 				if col.Tag.Null != true {
-					tlpstr = strings.Replace(tlpstr, "{{required}}", "true", -1)
-				} else {
-					tlpstr = strings.Replace(tlpstr, "{{required}}", "false", -1)
+					ruleItems = append(ruleItems, fmt.Sprintf("{required: true, message: '请输入%s'}", fieldComment))
 				}
-				if col.Tag.Size != "" {
-					tlpstr = strings.Replace(tlpstr, "{{length}}", col.Tag.Size, -1)
-				} else {
-					tlpstr = strings.Replace(tlpstr, "length: {{length}},", "", -1)
+				if col.Tag.Size != "" && col.Type == "string" {
+					ruleItems = append(ruleItems, fmt.Sprintf("{length: %s, message: '%s长度超限制'}", col.Tag.Size, fieldComment))
 				}
 
 				jsValidatorType := ""
@@ -1261,6 +1258,7 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 				} else if col.Type == "int8" {
 					//jsValidatorType = "integer"
 				}
+
 				tlpstr = strings.Replace(tlpstr, "{{type}}", jsValidatorType, -1)
 
 				customRulesEditArr = append(customRulesEditArr, tlpstr)
@@ -2251,6 +2249,7 @@ func init() {
 	VueCreateCustomRulesComponentTPL = `
                   {{fieldName}}:[
                       {required: {{required}}, message: '请输入{{fieldComment}}', length: {{length}}, type: "{{type}}"}
+                      {{customRules}}
                   ],`
 
 	vueEditComponentTPL = `<template>
