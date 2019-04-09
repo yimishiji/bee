@@ -1246,29 +1246,30 @@ func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
 				tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
 				var ruleItems []string
 				if col.Tag.Null != true {
-					ruleItems = append(ruleItems, fmt.Sprintf("{required: true, message: '请输入%s'}", fieldComment))
+					ruleItems = append(ruleItems, fmt.Sprintf("{required: true, message: \"请输入%s\"}", fieldComment))
 				}
 				if col.Tag.Size != "" && col.Type == "string" {
-					ruleItems = append(ruleItems, fmt.Sprintf("{length: %s, message: '%s长度超限制'}", col.Tag.Size, fieldComment))
+					ruleItems = append(ruleItems, fmt.Sprintf("{length: %s, message: \"%s长度超限制\"}", col.Tag.Size, fieldComment))
 				}
-
-				jsValidatorType := ""
 				if col.Type == "int" {
-					//jsValidatorType = "number"
+					ruleItems = append(ruleItems, fmt.Sprintf("{type: 'number', message: \"%s必需为数字\"}", fieldComment))
 				} else if col.Type == "int8" {
-					//jsValidatorType = "integer"
+					ruleItems = append(ruleItems, fmt.Sprintf("{type: 'integer', message: \"%s必需为整形\"}", fieldComment))
 				}
-
-				tlpstr = strings.Replace(tlpstr, "{{type}}", jsValidatorType, -1)
-
-				customRulesEditArr = append(customRulesEditArr, tlpstr)
+				ruleItemsStr := strings.Join(ruleItems, ",\n 				      ")
+				tlpstr = strings.Replace(tlpstr, "{{customRules}}", ruleItemsStr, -1)
+				if len(ruleItems) > 0 {
+					customRulesEditArr = append(customRulesEditArr, tlpstr)
+				}
 
 				if col.Name != "CreatedAt" && col.Name != "CreatedBy" && col.Name != "UpdatedAt" && col.Name != "UpdatedBy" {
 					// Add index page customFieldCreate
 					customFieldCreateArr = append(customFieldCreateArr, tlpstrField)
 
 					// Add index page customRulesCreate
-					customRulesCreateArr = append(customRulesCreateArr, tlpstr)
+					if len(ruleItems) > 0 {
+						customRulesCreateArr = append(customRulesCreateArr, tlpstr)
+					}
 				}
 			}
 
@@ -2248,7 +2249,6 @@ func init() {
 				  {{fieldName}}  : '{{fieldDefault}}',`
 	VueCreateCustomRulesComponentTPL = `
                   {{fieldName}}:[
-                      {required: {{required}}, message: '请输入{{fieldComment}}', length: {{length}}, type: "{{type}}"}
                       {{customRules}}
                   ],`
 
