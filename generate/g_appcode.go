@@ -942,7 +942,10 @@ func writeControllerFiles(tables []*Table, cPath string, pkgPath string) {
 				if col.Type == "int" {
 					createAutoArr = append(createAutoArr, "v.CreatedBy,_ = strconv.Atoi(c.User.GetId())\n")
 					isUserStrconv = true
-				} else {
+				} else if col.Type == "uint" {
+					createAutoArr = append(createAutoArr, "uid, _ := strconv.ParseUint(c.User.GetId(), 10, 32)\n		v.CreatedBy = uint(uid)\n")
+					isUserStrconv = true
+				} else if col.Type == "string" {
 					createAutoArr = append(createAutoArr, "v.CreatedBy = c.User.GetId()\n")
 				}
 			}
@@ -959,6 +962,9 @@ func writeControllerFiles(tables []*Table, cPath string, pkgPath string) {
 			if col.Name == "UpdatedBy" {
 				if col.Type == "int" {
 					updateAutoArr = append(updateAutoArr, "v.UpdatedBy,_ = strconv.Atoi(c.User.GetId())\n")
+					isUserStrconv = true
+				} else if col.Type == "uint" {
+					createAutoArr = append(createAutoArr, "uid, _ := strconv.ParseUint(c.User.GetId(), 10, 32)\n		v.UpdatedBy = uint(uid)\n")
 					isUserStrconv = true
 				} else {
 					updateAutoArr = append(updateAutoArr, "v.UpdatedBy = c.User.GetId()\n")
