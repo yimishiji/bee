@@ -2027,7 +2027,7 @@ func init() {
 
                 return this.$http.get(IndexApi,{ params }).then(resp =>{
                     if (resp.data.status == 1){
-                        var result = resp.data.results[0];
+                        var result = resp.data.results;
                         let list = result.list? result.list : [];
                         {{colModifyStr}}
                         let listdata = {};
