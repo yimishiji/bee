@@ -36,8 +36,8 @@ import (
 
 	"github.com/astaxie/beego/swagger"
 	"github.com/astaxie/beego/utils"
-	beeLogger "github.com/beego/bee/logger"
-	bu "github.com/beego/bee/utils"
+	beeLogger "github.com/yimishiji/bee/logger"
+	bu "github.com/yimishiji/bee/utils"
 )
 
 const (
@@ -909,48 +909,46 @@ func getparams(str string) []string {
 	return r
 }
 
-func getModel(str string) (definitionName string, m swagger.Schema, realTypes []string) {
+func getModel(str string) (objectname string, m swagger.Schema, realTypes []string) {
 	strs := strings.Split(str, ".")
-	// strs = [packageName].[objectName]
-	packageName := strs[0]
-	objectname := strs[len(strs)-1]
+	objectname = strs[len(strs)-1]
 
-	// Default all swagger schemas to object, if no other type is found
-	m.Type = astTypeObject
-
-L:
+	packageName := ""
+	m.Type = "object"
 	for _, pkg := range astPkgs {
-		if strs[0] == pkg.Name {
+		if strs[0] == pkg.Name || (strs[1] == pkg.Name && strings.Contains(str, "Model.Model")) {
 			for _, fl := range pkg.Files {
 				for k, d := range fl.Scope.Objects {
 					if d.Kind == ast.Typ {
 						if k != objectname {
-							// Still searching for the right object
 							continue
 						}
-						parseObject(d, k, &m, &realTypes, astPkgs, packageName)
-
-						// When we've found the correct object, we can stop searching
-						break L
+						packageName = pkg.Name
+						parseObject(d, k, &m, &realTypes, astPkgs, pkg.Name)
 					}
 				}
 			}
 		}
 	}
-
 	if m.Title == "" {
-		// Don't log when error has already been logged
-		if _, found := rootapi.Definitions[str]; !found {
-			beeLogger.Log.Warnf("Cannot find the object: %s", str)
+		if strings.Contains(str, "Model.Model") == false {
+			TryStr := str + "Model.Model"
+			return getModel(TryStr)
 		}
-		m.Title = objectname
+
+		beeLogger.Log.Warnf("Cannot find the object: %s", str)
 		// TODO remove when all type have been supported
+		//os.Exit(1)
 	}
+
 	if len(rootapi.Definitions) == 0 {
 		rootapi.Definitions = make(map[string]swagger.Schema)
 	}
-	rootapi.Definitions[str] = m
-	return str, m, realTypes
+	objectname = packageName + "." + objectname
+	m.Title = objectname
+
+	rootapi.Definitions[objectname] = m
+	return
 }
 
 func parseObject(d *ast.Object, k string, m *swagger.Schema, realTypes *[]string, astPkgs []*ast.Package, packageName string) {

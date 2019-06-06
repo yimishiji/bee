@@ -4,8 +4,8 @@ bee
 
 Bee is a command-line tool facilitating development of Beego-based application.
 
-[![Build Status](https://img.shields.io/travis/beego/bee.svg?branch=master&label=master)](https://travis-ci.org/beego/bee)
-[![Build Status](https://img.shields.io/travis/beego/bee.svg?branch=develop&label=develop)](https://travis-ci.org/beego/bee)
+[![Build Status](https://img.shields.io/travis/yimishiji/bee.svg?branch=master&label=master)](https://travis-ci.org/yimishiji/bee)
+[![Build Status](https://img.shields.io/travis/yimishiji/bee.svg?branch=develop&label=develop)](https://travis-ci.org/yimishiji/bee)
 
 ## Requirements
 
@@ -16,7 +16,7 @@ Bee is a command-line tool facilitating development of Beego-based application.
 To install `bee` use the `go get` command:
 
 ```bash
-go get github.com/beego/bee
+go get github.com/yimishiji/bee
 ```
 
 Then you can add `bee` binary to PATH environment variable in your `~/.bashrc` or `~/.bash_profile` file:
@@ -28,7 +28,7 @@ export PATH=$PATH:<your_main_gopath>/bin
 > If you already have `bee` installed, updating `bee` is simple:
 
 ```bash
-go get -u github.com/beego/bee
+go get -u github.com/yimishiji/bee
 ```
 
 ## Basic commands

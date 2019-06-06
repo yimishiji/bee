@@ -18,8 +18,8 @@ import (
 	"net/http"
 	"time"
 
-	beeLogger "github.com/beego/bee/logger"
 	"github.com/gorilla/websocket"
+	beeLogger "github.com/yimishiji/bee/logger"
 )
 
 // wsBroker maintains the set of active clients and broadcasts messages to the clients.

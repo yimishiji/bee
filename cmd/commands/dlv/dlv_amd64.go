@@ -24,15 +24,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beego/bee/cmd/commands"
-	"github.com/beego/bee/cmd/commands/version"
-	beeLogger "github.com/beego/bee/logger"
-	"github.com/beego/bee/utils"
+	"github.com/derekparker/delve/pkg/terminal"
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/rpc2"
 	"github.com/derekparker/delve/service/rpccommon"
-	"github.com/derekparker/delve/terminal"
 	"github.com/fsnotify/fsnotify"
+	"github.com/yimishiji/bee/cmd/commands"
+	"github.com/yimishiji/bee/cmd/commands/version"
+	beeLogger "github.com/yimishiji/bee/logger"
+	"github.com/yimishiji/bee/utils"
 )
 
 var cmdDlv = &commands.Command{
@@ -152,7 +152,8 @@ func startDelveDebugger(addr string, ch chan int) int {
 		APIVersion:  2,
 		WorkingDir:  ".",
 		ProcessArgs: []string{abs},
-	}, false)
+		Backend:     "default",
+	})
 	if err := server.Run(); err != nil {
 		beeLogger.Log.Fatalf("Could not start debugger server: %v", err)
 	}
@@ -182,7 +183,7 @@ func startDelveDebugger(addr string, ch chan int) int {
 	}
 
 	// Stop and kill the debugger server once user quits the REPL
-	if err := server.Stop(true); err != nil {
+	if err := server.Stop(); err != nil {
 		beeLogger.Log.Fatalf("Could not stop Delve server: %v", err)
 	}
 	return status

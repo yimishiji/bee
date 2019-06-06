@@ -23,17 +23,19 @@ import (
 	"regexp"
 	"strings"
 
-	beeLogger "github.com/beego/bee/logger"
-	"github.com/beego/bee/logger/colors"
-	"github.com/beego/bee/utils"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
+	beeLogger "github.com/yimishiji/bee/logger"
+	"github.com/yimishiji/bee/logger/colors"
+	strings2 "github.com/yimishiji/bee/pkg/strings"
+	"github.com/yimishiji/bee/utils"
 )
 
 const (
 	OModel byte = 1 << iota
 	OController
 	ORouter
+	OVue
 )
 
 // DbTransformer has method to reverse engineer a database schema to restful api code
@@ -62,6 +64,8 @@ type MvcPath struct {
 	ModelPath      string
 	ControllerPath string
 	RouterPath     string
+	VuePath        string
+	FilterPath     string
 }
 
 // typeMapping maps SQL data type to corresponding Go data type
@@ -102,6 +106,7 @@ var typeMappingMysql = map[string]string{
 	"binary":             "string", // binary
 	"varbinary":          "string",
 	"year":               "int16",
+	"json":               "string", // json
 }
 
 // typeMappingPostgres maps SQL data type to corresponding Go data type
@@ -206,16 +211,16 @@ func (col *Column) String() string {
 func (tag *OrmTag) String() string {
 	var ormOptions []string
 	if tag.Column != "" {
-		ormOptions = append(ormOptions, fmt.Sprintf("column(%s)", tag.Column))
+		ormOptions = append(ormOptions, fmt.Sprintf("column:%s", tag.Column))
 	}
 	if tag.Auto {
 		ormOptions = append(ormOptions, "auto")
 	}
 	if tag.Size != "" {
-		ormOptions = append(ormOptions, fmt.Sprintf("size(%s)", tag.Size))
+		ormOptions = append(ormOptions, fmt.Sprintf("size:%s", tag.Size))
 	}
 	if tag.Type != "" {
-		ormOptions = append(ormOptions, fmt.Sprintf("type(%s)", tag.Type))
+		ormOptions = append(ormOptions, fmt.Sprintf("type:%s", tag.Type))
 	}
 	if tag.Null {
 		ormOptions = append(ormOptions, "null")
@@ -227,22 +232,22 @@ func (tag *OrmTag) String() string {
 		ormOptions = append(ormOptions, "auto_now_add")
 	}
 	if tag.Decimals != "" {
-		ormOptions = append(ormOptions, fmt.Sprintf("digits(%s);decimals(%s)", tag.Digits, tag.Decimals))
+		ormOptions = append(ormOptions, fmt.Sprintf("digits:%s;decimals:%s", tag.Digits, tag.Decimals))
 	}
 	if tag.RelFk {
-		ormOptions = append(ormOptions, "rel(fk)")
+		ormOptions = append(ormOptions, "rel:fk")
 	}
 	if tag.RelOne {
-		ormOptions = append(ormOptions, "rel(one)")
+		ormOptions = append(ormOptions, "rel:one")
 	}
 	if tag.ReverseOne {
-		ormOptions = append(ormOptions, "reverse(one)")
+		ormOptions = append(ormOptions, "reverse:one")
 	}
 	if tag.ReverseMany {
-		ormOptions = append(ormOptions, "reverse(many)")
+		ormOptions = append(ormOptions, "reverse:many")
 	}
 	if tag.RelM2M {
-		ormOptions = append(ormOptions, "rel(m2m)")
+		ormOptions = append(ormOptions, "rel:m2m")
 	}
 	if tag.Pk {
 		ormOptions = append(ormOptions, "pk")
@@ -251,16 +256,15 @@ func (tag *OrmTag) String() string {
 		ormOptions = append(ormOptions, "unique")
 	}
 	if tag.Default != "" {
-		ormOptions = append(ormOptions, fmt.Sprintf("default(%s)", tag.Default))
+		ormOptions = append(ormOptions, fmt.Sprintf("default:%s", tag.Default))
 	}
-
 	if len(ormOptions) == 0 {
 		return ""
 	}
 	if tag.Comment != "" {
-		return fmt.Sprintf("`orm:\"%s\" description:\"%s\"`", strings.Join(ormOptions, ";"), tag.Comment)
+		return fmt.Sprintf("`json:\"%s\" gorm:\"%s\" description:\"%s\"`", tag.Column, strings.Join(ormOptions, ";"), tag.Comment)
 	}
-	return fmt.Sprintf("`orm:\"%s\"`", strings.Join(ormOptions, ";"))
+	return fmt.Sprintf("`json:\"%s\" gorm:\"%s\"`", tag.Column, strings.Join(ormOptions, ";"))
 }
 
 func GenerateAppcode(driver, connStr, level, tables, currpath string) {
@@ -272,6 +276,8 @@ func GenerateAppcode(driver, connStr, level, tables, currpath string) {
 		mode = OModel | OController
 	case "3":
 		mode = OModel | OController | ORouter
+	case "4":
+		mode = OModel | OController | ORouter | OVue
 	default:
 		beeLogger.Log.Fatal("Invalid level value. Must be either \"1\", \"2\", or \"3\"")
 	}
@@ -316,6 +322,12 @@ func gen(dbms, connStr string, mode byte, selectedTableNames map[string]bool, ap
 		mvcPath.ModelPath = path.Join(apppath, "models")
 		mvcPath.ControllerPath = path.Join(apppath, "controllers")
 		mvcPath.RouterPath = path.Join(apppath, "routers")
+		mvcPath.VuePath = path.Join(apppath, "vue/src/components")
+		mvcPath.FilterPath = path.Join(apppath, "filters")
+
+		//算成vue文件目录
+		mkdirs(apppath, "vue", "src", "components")
+
 		createPaths(mode, mvcPath)
 		pkgPath := getPackagePath(apppath)
 		writeSourceFiles(pkgPath, tables, mode, mvcPath)
@@ -719,11 +731,17 @@ func createPaths(mode byte, paths *MvcPath) {
 	}
 	if (mode & OController) == OController {
 		os.Mkdir(paths.ControllerPath, 0777)
+		os.Mkdir(paths.FilterPath, 0777)
 	}
 	if (mode & ORouter) == ORouter {
 		os.Mkdir(paths.RouterPath, 0777)
 	}
+	if (mode & OVue) == OVue {
+		os.Mkdir(paths.VuePath, 0777)
+	}
 }
+
+var notirceMsgArr []string
 
 // writeSourceFiles generates source files for model/controller/router
 // It will wipe the following directories and recreate them:./models, ./controllers, ./routers
@@ -731,25 +749,54 @@ func createPaths(mode byte, paths *MvcPath) {
 func writeSourceFiles(pkgPath string, tables []*Table, mode byte, paths *MvcPath) {
 	if (OModel & mode) == OModel {
 		beeLogger.Log.Info("Creating model files...")
-		writeModelFiles(tables, paths.ModelPath)
+		writeModelFiles(tables, paths.ModelPath, pkgPath)
 	}
 	if (OController & mode) == OController {
 		beeLogger.Log.Info("Creating controller files...")
 		writeControllerFiles(tables, paths.ControllerPath, pkgPath)
+
+		beeLogger.Log.Info("Creating filter files...")
+		writeFilterFiles(tables, paths.FilterPath, pkgPath)
+
 	}
 	if (ORouter & mode) == ORouter {
 		beeLogger.Log.Info("Creating router files...")
 		writeRouterFile(tables, paths.RouterPath, pkgPath)
 	}
+	if (OVue & mode) == OVue {
+		beeLogger.Log.Info("Creating vue files...")
+		writeVueControllerIndex(tables, paths.VuePath, pkgPath)
+	}
+
+	if len(notirceMsgArr) > 0 {
+		beeLogger.Log.Warnf("add to file this route \n %s\n", strings.Join(notirceMsgArr, "\n"))
+	}
 }
 
 // writeModelFiles generates model files
-func writeModelFiles(tables []*Table, mPath string) {
+func writeModelFiles(tables []*Table, mPath string, pkgPath string) {
 	w := colors.NewColorWriter(os.Stdout)
 
 	for _, tb := range tables {
-		filename := getFileName(tb.Name)
-		fpath := path.Join(mPath, filename+".go")
+
+		cBaseTableStruct := mPath + string(os.PathSeparator) + "table-structs"
+		os.Mkdir(cBaseTableStruct, 0777)
+
+		namespce := strings.Split(strings.ToLower(tb.Name), "_")
+		filename := strings.Join(namespce, "-")
+
+		//model文件目录结构
+		var filePathArr []string
+		filePathArr = append(filePathArr, mPath)
+		filePathArr = append(filePathArr, namespce[0])
+		if len(namespce) >= 1 {
+			subDir := strings.Join(namespce[1:], "-")
+			filePathArr = append(filePathArr, subDir)
+		}
+		mkdirs(filePathArr...)
+		filePathArr = append(filePathArr, "model.go")
+		fpath := path.Join(filePathArr...)
+
 		var f *os.File
 		var err error
 		if utils.IsExist(fpath) {
@@ -777,9 +824,11 @@ func writeModelFiles(tables []*Table, mPath string) {
 		} else {
 			template = ModelTPL
 		}
-		fileStr := strings.Replace(template, "{{modelStruct}}", tb.String(), 1)
+		tbString := tb.String()
+		fileStr := strings.Replace(template, "{{modelStruct}}", tbString, 1)
 		fileStr = strings.Replace(fileStr, "{{modelName}}", utils.CamelCase(tb.Name), -1)
 		fileStr = strings.Replace(fileStr, "{{tableName}}", tb.Name, -1)
+		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
 
 		// If table contains time field, import time.Time package
 		timePkg := ""
@@ -796,6 +845,39 @@ func writeModelFiles(tables []*Table, mPath string) {
 		utils.CloseFile(f)
 		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpath, "\x1b[0m")
 		utils.FormatSourceCode(fpath)
+
+		//表结构
+		fpath = path.Join(cBaseTableStruct, filename+".go")
+		if utils.IsExist(fpath) {
+			beeLogger.Log.Warnf("'%s' already exists. Do you want to overwrite it? [Yes|No] ", fpath)
+			if utils.AskForConfirmation() {
+				f, err = os.OpenFile(fpath, os.O_RDWR|os.O_TRUNC, 0666)
+				if err != nil {
+					beeLogger.Log.Warnf("%s", err)
+					continue
+				}
+			} else {
+				beeLogger.Log.Warnf("Skipped create file '%s'", fpath)
+				continue
+			}
+		} else {
+			f, err = os.OpenFile(fpath, os.O_CREATE|os.O_RDWR, 0666)
+			if err != nil {
+				beeLogger.Log.Warnf("%s", err)
+				continue
+			}
+		}
+		fileStr = strings.Replace(ModelBaseTPL, "{{modelStruct}}", tbString, 1)
+		fileStr = strings.Replace(fileStr, "{{modelName}}", utils.CamelCase(tb.Name), -1)
+		fileStr = strings.Replace(fileStr, "{{tableName}}", tb.Name, -1)
+		fileStr = strings.Replace(fileStr, "{{importTimePkg}}", importTimePkg, -1)
+
+		if _, err := f.WriteString(fileStr); err != nil {
+			beeLogger.Log.Fatalf("Could not write model file to '%s': %s", fpath, err)
+		}
+		utils.CloseFile(f)
+		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpath, "\x1b[0m")
+		utils.FormatSourceCode(fpath)
 	}
 }
 
@@ -803,12 +885,23 @@ func writeModelFiles(tables []*Table, mPath string) {
 func writeControllerFiles(tables []*Table, cPath string, pkgPath string) {
 	w := colors.NewColorWriter(os.Stdout)
 
+	var operateListArr []string
 	for _, tb := range tables {
 		if tb.Pk == "" {
 			continue
 		}
-		filename := getFileName(tb.Name)
+
+		//控制器文件名
+		namespce := strings.Split(strings.ToLower(tb.Name), "_")
+		filename := strings.Join(namespce, "-")
 		fpath := path.Join(cPath, filename+".go")
+
+		//相对应的fitler,model子目录名
+		subPath := namespce[0]
+		if len(namespce) > 1 {
+			subPath = path.Join(subPath, strings.Join(namespce[1:], "-"))
+		}
+
 		var f *os.File
 		var err error
 		if utils.IsExist(fpath) {
@@ -830,10 +923,180 @@ func writeControllerFiles(tables []*Table, cPath string, pkgPath string) {
 				continue
 			}
 		}
+
+		var createAutoArr []string
+		var updateAutoArr []string
+		var pkgListArr []string
+		var isUserTime bool = false
+		var isUserStrconv bool = false
+		for _, col := range tb.Columns {
+			if col.Name == "CreatedAt" {
+				if col.Type == "datetime" {
+					createAutoArr = append(createAutoArr, "v.CreatedAt = time.Now()\n")
+				} else if col.Type == "int" {
+					createAutoArr = append(createAutoArr, "v.CreatedAt = int(time.Now().Unix())\n")
+				}
+				isUserTime = true
+			}
+			if col.Name == "CreatedBy" {
+				if col.Type == "int" {
+					createAutoArr = append(createAutoArr, "v.CreatedBy,_ = strconv.Atoi(c.User.GetId())\n")
+					isUserStrconv = true
+				} else if col.Type == "uint" {
+					createAutoArr = append(createAutoArr, "uid, _ := strconv.ParseUint(c.User.GetId(), 10, 32)\n		v.CreatedBy = uint(uid)\n")
+					isUserStrconv = true
+				} else if col.Type == "string" {
+					createAutoArr = append(createAutoArr, "v.CreatedBy = c.User.GetId()\n")
+				}
+			}
+			if col.Name == "UpdatedAt" {
+				if col.Type == "datetime" {
+					updateAutoArr = append(updateAutoArr, "v.UpdatedAt = time.Now()\n")
+					createAutoArr = append(createAutoArr, "v.UpdatedAt = time.Now()\n")
+				} else if col.Type == "int" {
+					updateAutoArr = append(updateAutoArr, "v.UpdatedAt = int(time.Now().Unix())\n")
+					createAutoArr = append(createAutoArr, "v.UpdatedAt = int(time.Now().Unix())\n")
+				}
+				isUserTime = true
+			}
+			if col.Name == "UpdatedBy" {
+				if col.Type == "int" {
+					updateAutoArr = append(updateAutoArr, "v.UpdatedBy,_ = strconv.Atoi(c.User.GetId())\n")
+					isUserStrconv = true
+				} else if col.Type == "uint" {
+					createAutoArr = append(createAutoArr, "uid, _ := strconv.ParseUint(c.User.GetId(), 10, 32)\n		v.UpdatedBy = uint(uid)\n")
+					isUserStrconv = true
+				} else {
+					updateAutoArr = append(updateAutoArr, "v.UpdatedBy = c.User.GetId()\n")
+				}
+			}
+		}
+
+		if isUserTime {
+			pkgListArr = append(pkgListArr, "\"time\"\n")
+		}
+		if isUserStrconv {
+			pkgListArr = append(pkgListArr, "\"strconv\"\n")
+		}
+		pkgListArr = append(pkgListArr, "\"strings\"\n")
+
+		createAuto := strings.Join(createAutoArr, "")
+		updateAuto := strings.Join(updateAutoArr, "")
+		pkgList := strings.Join(pkgListArr, "")
+
 		fileStr := strings.Replace(CtrlTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
 		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
+		fileStr = strings.Replace(fileStr, "{{createAuto}}", createAuto, -1)
+		fileStr = strings.Replace(fileStr, "{{updateAuto}}", updateAuto, -1)
+		fileStr = strings.Replace(fileStr, "{{pkg}}", pkgList, -1)
+		fileStr = strings.Replace(fileStr, "{{subPath}}", subPath, -1)
+
 		if _, err := f.WriteString(fileStr); err != nil {
 			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpath, err)
+		}
+		utils.CloseFile(f)
+		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpath, "\x1b[0m")
+		utils.FormatSourceCode(fpath)
+
+		fileStr = strings.Replace(operateListTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
+		fileStr = strings.Replace(fileStr, "{{pageUrl}}", strings2.UrlStyleString(tb.Name), -1)
+
+		operateListArr = append(operateListArr, fileStr)
+
+	}
+	notirceMsgArr = append(notirceMsgArr, "add to operate list:\n"+strings.Join(operateListArr, ""))
+}
+
+func mkdirs(namespce ...string) {
+	namespceLen := len(namespce)
+
+	for i := namespceLen; i >= 0; i-- {
+		var spaces []string
+		spaces = append(spaces, namespce[:namespceLen-i]...)
+		os.Mkdir(path.Join(spaces...), 0777)
+	}
+}
+
+// writeControllerFiles generates controller files
+func writeFilterFiles(tables []*Table, cPath string, pkgPath string) {
+	w := colors.NewColorWriter(os.Stdout)
+
+	for _, tb := range tables {
+		if tb.Pk == "" {
+			continue
+		}
+
+		namespce := strings.Split(strings.ToLower(tb.Name), "_")
+		//文件目录结构
+		var filePathArr []string
+		filePathArr = append(filePathArr, cPath)
+		filePathArr = append(filePathArr, namespce[0])
+		if len(namespce) >= 1 {
+			subDir := strings.Join(namespce[1:], "-")
+			filePathArr = append(filePathArr, subDir)
+		}
+		mkdirs(filePathArr...)
+		filePathArr = append(filePathArr, "input.go")
+		fpath := path.Join(filePathArr...)
+
+		var f *os.File
+		var err error
+		if utils.IsExist(fpath) {
+			beeLogger.Log.Warnf("'%s' already exists. Do you want to overwrite it? [Yes|No] ", fpath)
+			if utils.AskForConfirmation() {
+				f, err = os.OpenFile(fpath, os.O_RDWR|os.O_TRUNC, 0666)
+				if err != nil {
+					beeLogger.Log.Warnf("%s", err)
+					continue
+				}
+			} else {
+				beeLogger.Log.Warnf("Skipped create file '%s'", fpath)
+				continue
+			}
+		} else {
+			f, err = os.OpenFile(fpath, os.O_CREATE|os.O_RDWR, 0666)
+			if err != nil {
+				beeLogger.Log.Warnf("%s", err)
+				continue
+			}
+		}
+
+		var pkgListArr []string
+		var validArr []string
+		var inpuTfieldListArr []string
+		var isUserTime bool = false
+		for _, col := range tb.Columns {
+			if col.Tag.Null == false && col.Tag.Column != tb.Pk {
+				fileStr := strings.Replace(FilterValidRuleTPL, "{{validFunc}}", "Required", -1)
+				fileStr = strings.Replace(fileStr, "{{colName}}", col.Name, -1)
+				fileStr = strings.Replace(fileStr, "{{colColumn}}", col.Tag.Column, -1)
+				fileStr = strings.Replace(fileStr, "{{msg}}", col.Tag.Column+" is required", -1)
+				validArr = append(validArr, fileStr)
+			}
+
+			if tb.Pk != col.Tag.Column && col.Name != "CreatedAt" && col.Name != "CreatedBy" && col.Name != "UpdatedAt" && col.Name != "UpdatedBy" {
+
+				structfield := fmt.Sprintf("%s %s %s", col.Name, col.Type, col.Tag.String())
+				inpuTfieldListArr = append(inpuTfieldListArr, structfield)
+			}
+		}
+
+		if isUserTime {
+			pkgListArr = append(pkgListArr, "\"time\"\n")
+		}
+
+		pkgList := strings.Join(pkgListArr, "")
+		validStr := strings.Join(validArr, "")
+		inpuTfieldList := strings.Join(inpuTfieldListArr, "\n	")
+
+		fileStr := strings.Replace(FilterTPL, "{{modelName}}", utils.CamelCase(tb.Name), -1)
+		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
+		fileStr = strings.Replace(fileStr, "{{pkg}}", pkgList, -1)
+		fileStr = strings.Replace(fileStr, "{{ValidRuleList}}", validStr, -1)
+		fileStr = strings.Replace(fileStr, "{{inpuTfieldList}}", inpuTfieldList, -1)
+
+		if _, err := f.WriteString(fileStr); err != nil {
+			beeLogger.Log.Fatalf("Could not write filter file to '%s': %s", fpath, err)
 		}
 		utils.CloseFile(f)
 		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpath, "\x1b[0m")
@@ -851,7 +1114,7 @@ func writeRouterFile(tables []*Table, rPath string, pkgPath string) {
 			continue
 		}
 		// Add namespaces
-		nameSpace := strings.Replace(NamespaceTPL, "{{nameSpace}}", tb.Name, -1)
+		nameSpace := strings.Replace(NamespaceTPL, "{{nameSpace}}", strings2.UrlStyleString(tb.Name), -1)
 		nameSpace = strings.Replace(nameSpace, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
 		nameSpaces = append(nameSpaces, nameSpace)
 	}
@@ -862,17 +1125,18 @@ func writeRouterFile(tables []*Table, rPath string, pkgPath string) {
 	var f *os.File
 	var err error
 	if utils.IsExist(fpath) {
-		beeLogger.Log.Warnf("'%s' already exists. Do you want to overwrite it? [Yes|No] ", fpath)
-		if utils.AskForConfirmation() {
-			f, err = os.OpenFile(fpath, os.O_RDWR|os.O_TRUNC, 0666)
-			if err != nil {
-				beeLogger.Log.Warnf("%s", err)
-				return
-			}
-		} else {
-			beeLogger.Log.Warnf("Skipped create file '%s'", fpath)
-			return
-		}
+		//beeLogger.Log.Warnf("'%s' already exists. Do you want to overwrite it? [Yes|No] ", fpath)
+		//if utils.AskForConfirmation() {
+		//	f, err = os.OpenFile(fpath, os.O_RDWR|os.O_TRUNC, 0666)
+		//	if err != nil {
+		//		beeLogger.Log.Warnf("%s", err)
+		//		return
+		//	}
+		//} else {
+		beeLogger.Log.Warnf("Skipped create file '%s'", fpath)
+		notirceMsgArr = append(notirceMsgArr, "add to routers/router.go \n"+strings.Join(nameSpaces, ""))
+		return
+		//}
 	} else {
 		f, err = os.OpenFile(fpath, os.O_CREATE|os.O_RDWR, 0666)
 		if err != nil {
@@ -886,6 +1150,300 @@ func writeRouterFile(tables []*Table, rPath string, pkgPath string) {
 	utils.CloseFile(f)
 	fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpath, "\x1b[0m")
 	utils.FormatSourceCode(fpath)
+}
+
+// writeControllerFiles generates controller files
+func writeVueControllerIndex(tables []*Table, cPath string, pkgPath string) {
+	w := colors.NewColorWriter(os.Stdout)
+
+	var vueRuleArr []string
+	var vueMenuArr []string
+
+	for _, tb := range tables {
+		if tb.Pk == "" {
+			continue
+		}
+		//vueComponentPath := strings2.LowerCamelCase(tb.Name)
+		pageUrl := strings2.UrlStyleString(tb.Name)
+		vueComponentPath := pageUrl
+
+		cBase := cPath + string(os.PathSeparator) + vueComponentPath
+		os.Mkdir(cBase, 0777)
+
+		//列表
+		fpathIndex := path.Join(cBase, "index.vue")
+		var f *os.File
+		var err error
+		if utils.IsExist(fpathIndex) {
+			beeLogger.Log.Warnf("'%s' already exists. Do you want to overwrite it? [Yes|No] ", fpathIndex)
+			if utils.AskForConfirmation() {
+				f, err = os.OpenFile(fpathIndex, os.O_RDWR|os.O_TRUNC, 0666)
+				if err != nil {
+					beeLogger.Log.Warnf("%s", err)
+					continue
+				}
+			} else {
+				beeLogger.Log.Warnf("Skipped create file '%s'", fpathIndex)
+				continue
+			}
+		} else {
+			f, err = os.OpenFile(fpathIndex, os.O_CREATE|os.O_RDWR, 0666)
+			if err != nil {
+				beeLogger.Log.Warnf("%s", err)
+				continue
+			}
+		}
+
+		var listColumnsArr []string
+		var listColumnShowArr []string
+		var selectOptionsArr []string
+		var createFromFieldArr []string
+		var customFieldCreateArr []string
+		var customFieldEditArr []string
+		var customRulesCreateArr []string
+		var customRulesEditArr []string
+		var editfromFieldArr []string
+		var editSubmitItemsArr []string
+		var createSubmitDataFixArr []string
+		var indexModifyRowsArr []string
+
+		var index int32 = 0
+		for _, col := range tb.Columns {
+			fieldComment := col.Tag.Comment
+			if fieldComment == "" {
+				fieldComment = col.Name
+			}
+			// Add index page list column
+			tlpstr := strings.Replace(VueIndexListColumnTPL, "{{fieldName}}", col.Tag.Column, -1)
+			tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
+			if index > 6 {
+				tlpstr = strings.Replace(tlpstr, "show: true", "show: false", -1)
+			} else {
+				listColumnShowArr = append(listColumnShowArr, tlpstr)
+			}
+			listColumnsArr = append(listColumnsArr, tlpstr)
+
+			// Add index page select column
+			tlpstr = strings.Replace(VueIndexSelectOptionTPL, "{{fieldName}}", col.Tag.Column, -1)
+			tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
+			selectOptionsArr = append(selectOptionsArr, tlpstr)
+
+			// Add index page list column
+			if tb.Pk != col.Tag.Column && col.Name != "CreatedAt" && col.Name != "CreatedBy" && col.Name != "UpdatedAt" && col.Name != "UpdatedBy" {
+				tlpstr = strings.Replace(VueCreateFieldComponentTPL, "{{fieldName}}", col.Tag.Column, -1)
+				tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
+				createFromFieldArr = append(createFromFieldArr, tlpstr)
+			}
+
+			// add index row modify
+			if (col.Name == "CreatedAt" || col.Name == "UpdatedAt") && col.Type == "int" {
+				indexModifyRowsArr = append(indexModifyRowsArr, "\n                            list[i]."+col.Tag.Column+" = this.format(list[i]."+col.Tag.Column+");")
+			}
+
+			// Add index page customFieldEdit
+			tlpstrField := strings.Replace(VueCreateCustomFormComponentTPL, "{{fieldName}}", col.Tag.Column, -1)
+			tlpstrField = strings.Replace(tlpstrField, "{{fieldDefault}}", col.Tag.Default, -1)
+			customFieldEditArr = append(customFieldEditArr, tlpstrField)
+
+			if tb.Pk != col.Tag.Column {
+
+				// Add index page customRules
+				tlpstr = strings.Replace(VueCreateCustomRulesComponentTPL, "{{fieldName}}", col.Tag.Column, -1)
+				tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
+				var ruleItems []string
+				if col.Tag.Null != true {
+					ruleItems = append(ruleItems, fmt.Sprintf("{required: true, message: \"请输入%s\"}", fieldComment))
+				}
+				if col.Tag.Size != "" && col.Type == "string" {
+					ruleItems = append(ruleItems, fmt.Sprintf("{length: %s, message: \"%s长度超限制\"}", col.Tag.Size, fieldComment))
+				}
+				if col.Type == "int" {
+					ruleItems = append(ruleItems, fmt.Sprintf("{type: 'number', message: \"%s必需为数字\"}", fieldComment))
+				} else if col.Type == "int8" {
+					ruleItems = append(ruleItems, fmt.Sprintf("{type: 'integer', message: \"%s必需为整形\"}", fieldComment))
+				}
+				ruleItemsStr := strings.Join(ruleItems, ",\n 				      ")
+				tlpstr = strings.Replace(tlpstr, "{{customRules}}", ruleItemsStr, -1)
+				if len(ruleItems) > 0 {
+					customRulesEditArr = append(customRulesEditArr, tlpstr)
+				}
+
+				if col.Name != "CreatedAt" && col.Name != "CreatedBy" && col.Name != "UpdatedAt" && col.Name != "UpdatedBy" {
+					// Add index page customFieldCreate
+					customFieldCreateArr = append(customFieldCreateArr, tlpstrField)
+
+					// Add index page customRulesCreate
+					if len(ruleItems) > 0 {
+						customRulesCreateArr = append(customRulesCreateArr, tlpstr)
+					}
+				}
+			}
+
+			// Add index page list column
+			tlpstr = strings.Replace(vueEditComponentFromItemTPL, "{{fieldName}}", col.Tag.Column, -1)
+			tlpstr = strings.Replace(tlpstr, "{{fieldComment}}", fieldComment, -1)
+			if tb.Pk == col.Tag.Column || col.Name == "CreatedAt" || col.Name == "CreatedBy" || col.Name == "UpdatedAt" || col.Name == "UpdatedBy" {
+				tlpstr = strings.Replace(tlpstr, "{{disabled}}", "disabled", -1)
+			} else {
+				tlpstr = strings.Replace(tlpstr, "{{disabled}}", "", -1)
+			}
+			editfromFieldArr = append(editfromFieldArr, tlpstr)
+
+			// Add eidt page submit column
+			if tb.Pk != col.Tag.Column && col.Name != "CreatedAt" && col.Name != "CreatedBy" && col.Name != "UpdatedAt" && col.Name != "UpdatedBy" {
+				tlpstr = strings.Replace(vueEditComponentSubmitItemTPL, "{{fieldName}}", col.Tag.Column, -1)
+				if col.Type == "int" || col.Type == "int8" {
+					tlpstr = strings.Replace(tlpstr, "this.customForm."+col.Tag.Column, "parseInt(this.customForm."+col.Tag.Column+")", -1)
+					createSubmitDataFixArr = append(createSubmitDataFixArr, "\n			      	  params['"+col.Tag.Column+"'] = parseInt(params['"+col.Tag.Column+"']);")
+				} else if col.Type == "float" {
+					tlpstr = strings.Replace(tlpstr, "this.customForm."+col.Tag.Column, "parseFloat(this.customForm."+col.Tag.Column+")", -1)
+					createSubmitDataFixArr = append(createSubmitDataFixArr, "	\n				  	  params['"+col.Tag.Column+"'] = parseFloat(params['"+col.Tag.Column+"']);")
+				}
+				editSubmitItemsArr = append(editSubmitItemsArr, tlpstr)
+			}
+
+			index++
+		}
+
+		listColumns := strings.Join(listColumnsArr, "")
+		listColumnShow := strings.Join(listColumnShowArr, "")
+		selectOptions := strings.Join(selectOptionsArr, "")
+		createFromField := strings.Join(createFromFieldArr, "")
+		customFieldCreate := strings.Join(customFieldCreateArr, "")
+		customFieldEdit := strings.Join(customFieldEditArr, "")
+		customRulesCreate := strings.Join(customRulesCreateArr, "")
+		customRulesEdit := strings.Join(customRulesEditArr, "")
+		editfromField := strings.Join(editfromFieldArr, "")
+		editSubmitItems := strings.Join(editSubmitItemsArr, "")
+		createSubmitDataFix := strings.Join(createSubmitDataFixArr, "")
+		indexModifyRows := strings.Join(indexModifyRowsArr, "")
+
+		fileStr := strings.Replace(VueIndexTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
+		fileStr = strings.Replace(fileStr, "{{tbName}}", tb.Name, -1)
+		fileStr = strings.Replace(fileStr, "{{tbPk}}", tb.Pk, -1)
+		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
+		fileStr = strings.Replace(fileStr, "{{listColumn}}", listColumns, -1)
+		fileStr = strings.Replace(fileStr, "{{listColumnShow}}", listColumnShow, -1)
+		fileStr = strings.Replace(fileStr, "{{selectOptions}}", selectOptions, -1)
+		fileStr = strings.Replace(fileStr, "{{pageUrl}}", pageUrl, -1)
+		if len(indexModifyRowsArr) > 0 {
+			colModifyStr := strings.Replace(VueIndexColModifyTPL, "{{indexModifyRows}}", indexModifyRows, -1)
+			fileStr = strings.Replace(fileStr, "{{colModifyStr}}", colModifyStr, -1)
+		} else {
+			fileStr = strings.Replace(fileStr, "{{colModifyStr}}", "", -1)
+		}
+
+		if _, err := f.WriteString(fileStr); err != nil {
+			beeLogger.Log.Fatalf("Could not write controller file to '%s': %s", fpathIndex, err)
+		}
+		utils.CloseFile(f)
+		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpathIndex, "\x1b[0m")
+
+		//添加组件
+		fpathIndex = path.Join(cBase, "create-component.vue")
+		if utils.IsExist(fpathIndex) {
+			beeLogger.Log.Warnf("'%s' already exists. Do you want to overwrite it? [Yes|No] ", fpathIndex)
+			if utils.AskForConfirmation() {
+				f, err = os.OpenFile(fpathIndex, os.O_RDWR|os.O_TRUNC, 0666)
+				if err != nil {
+					beeLogger.Log.Warnf("%s", err)
+					continue
+				}
+			} else {
+				beeLogger.Log.Warnf("Skipped create file '%s'", fpathIndex)
+				continue
+			}
+		} else {
+			f, err = os.OpenFile(fpathIndex, os.O_CREATE|os.O_RDWR, 0666)
+			if err != nil {
+				beeLogger.Log.Warnf("%s", err)
+				continue
+			}
+		}
+		fileStr = strings.Replace(VueCreateComponentTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
+		fileStr = strings.Replace(fileStr, "{{tbName}}", tb.Name, -1)
+		fileStr = strings.Replace(fileStr, "{{tbPk}}", tb.Pk, -1)
+		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
+		fileStr = strings.Replace(fileStr, "{{fromField}}", createFromField, -1)
+		fileStr = strings.Replace(fileStr, "{{customField}}", customFieldCreate, -1)
+		fileStr = strings.Replace(fileStr, "{{customRules}}", customRulesCreate, -1)
+		fileStr = strings.Replace(fileStr, "{{pageUrl}}", pageUrl, -1)
+		fileStr = strings.Replace(fileStr, "{{createSubmitDataFix}}", createSubmitDataFix, -1)
+		if _, err := f.WriteString(fileStr); err != nil {
+			beeLogger.Log.Fatalf("Could not write create-component file to '%s': %s", fpathIndex, err)
+		}
+		utils.CloseFile(f)
+		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpathIndex, "\x1b[0m")
+
+		//编辑组件
+		fpathIndex = path.Join(cBase, "edit-component.vue")
+		if utils.IsExist(fpathIndex) {
+			beeLogger.Log.Warnf("'%s' already exists. Do you want to overwrite it? [Yes|No] ", fpathIndex)
+			if utils.AskForConfirmation() {
+				f, err = os.OpenFile(fpathIndex, os.O_RDWR|os.O_TRUNC, 0666)
+				if err != nil {
+					beeLogger.Log.Warnf("%s", err)
+					continue
+				}
+			} else {
+				beeLogger.Log.Warnf("Skipped create file '%s'", fpathIndex)
+				continue
+			}
+		} else {
+			f, err = os.OpenFile(fpathIndex, os.O_CREATE|os.O_RDWR, 0666)
+			if err != nil {
+				beeLogger.Log.Warnf("%s", err)
+				continue
+			}
+		}
+		fileStr = strings.Replace(vueEditComponentTPL, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
+		fileStr = strings.Replace(fileStr, "{{fromField}}", editfromField, -1)
+		fileStr = strings.Replace(fileStr, "{{tbName}}", tb.Name, -1)
+		fileStr = strings.Replace(fileStr, "{{tbPk}}", tb.Pk, -1)
+		fileStr = strings.Replace(fileStr, "{{pkgPath}}", pkgPath, -1)
+		fileStr = strings.Replace(fileStr, "{{customField}}", customFieldEdit, -1)
+		fileStr = strings.Replace(fileStr, "{{customRules}}", customRulesEdit, -1)
+		fileStr = strings.Replace(fileStr, "{{editSubmitItems}}", editSubmitItems, -1)
+		fileStr = strings.Replace(fileStr, "{{pageUrl}}", pageUrl, -1)
+
+		if _, err := f.WriteString(fileStr); err != nil {
+			beeLogger.Log.Fatalf("Could not write edit-component file to '%s': %s", fpathIndex, err)
+		}
+		utils.CloseFile(f)
+		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpathIndex, "\x1b[0m")
+
+		//列显示设置组件
+		commonPath := path.Join(cPath, "common")
+		os.Mkdir(commonPath, 0777)
+		fpathIndex = path.Join(commonPath, "colsetting-component.vue")
+		if utils.IsExist(fpathIndex) {
+			continue
+		} else {
+			f, err = os.OpenFile(fpathIndex, os.O_CREATE|os.O_RDWR, 0666)
+			if err != nil {
+				beeLogger.Log.Warnf("%s", err)
+				continue
+			}
+		}
+		if _, err := f.WriteString(vueColSettingComponentTPL); err != nil {
+			beeLogger.Log.Fatalf("Could not write vue colsetting-component file to '%s': %s", fpathIndex, err)
+		}
+		utils.CloseFile(f)
+		fmt.Fprintf(w, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", fpathIndex, "\x1b[0m")
+
+		//vue 路由规则
+		fileStr = strings.Replace(vueRuleTPL, "{{pageUrl}}", pageUrl, -1)
+		fileStr = strings.Replace(fileStr, "{{filPath}}", vueComponentPath, -1)
+		vueRuleArr = append(vueRuleArr, fileStr)
+
+		//vue 菜单
+		fileStr = strings.Replace(menuListTPL, "{{pageUrl}}", pageUrl, -1)
+		fileStr = strings.Replace(fileStr, "{{ctrlName}}", utils.CamelCase(tb.Name), -1)
+		vueMenuArr = append(vueMenuArr, fileStr)
+	}
+	notirceMsgArr = append(notirceMsgArr, "add to vue vue/src/router/index.js \n"+strings.Join(vueRuleArr, ""))
+	notirceMsgArr = append(notirceMsgArr, "add to vue menu \n"+strings.Join(vueMenuArr, ""))
+
 }
 
 func isSQLTemporalType(t string) bool {
@@ -937,7 +1495,7 @@ func extractDecimal(colType string) (digits string, decimals string) {
 
 func getFileName(tbName string) (filename string) {
 	// avoid test file
-	filename = tbName
+	filename = utils.CamelCase(tbName)
 	for strings.HasSuffix(filename, "_test") {
 		pos := strings.LastIndex(filename, "_")
 		filename = filename[:pos] + filename[pos+1:]
@@ -983,170 +1541,128 @@ const (
 {{importTimePkg}}
 {{modelStruct}}
 `
-
-	ModelTPL = `package models
-
-import (
-	"errors"
-	"fmt"
-	"reflect"
-	"strings"
-	{{timePkg}}
-	"github.com/astaxie/beego/orm"
-)
-
+	ModelBaseTPL = `package TableStructs
+{{importTimePkg}}
 {{modelStruct}}
 
 func (t *{{modelName}}) TableName() string {
 	return "{{tableName}}"
 }
 
-func init() {
-	orm.RegisterModel(new({{modelName}}))
+`
+	ModelTPL string = `package {{modelName}}Model
+
+import (
+	"strings"
+	{{timePkg}}
+	TableStructs "{{pkgPath}}/models/table-structs"
+    "github.com/yimishiji/bee/pkg/db"
+)
+
+type Model struct {
+	TableStructs.{{modelName}}
 }
 
-// Add{{modelName}} insert a new {{modelName}} into database and returns
+// Add insert a new {{modelName}} into database and returns
 // last inserted Id on success.
-func Add{{modelName}}(m *{{modelName}}) (id int64, err error) {
-	o := orm.NewOrm()
-	id, err = o.Insert(m)
-	return
+func Add(m *Model) (err error) {
+    return db.Conn.Create(m).Error
 }
 
-// Get{{modelName}}ById retrieves {{modelName}} by Id. Returns error if
+// GetById retrieves {{modelName}} by Id. Returns error if
 // Id doesn't exist
-func Get{{modelName}}ById(id int) (v *{{modelName}}, err error) {
-	o := orm.NewOrm()
-	v = &{{modelName}}{Id: id}
-	if err = o.Read(v); err == nil {
-		return v, nil
+// relations relations data keys
+func GetById(id int, relations ...string) (v Model, err error) {
+	gormQuery := db.Conn.Where(id)
+
+	//载入关连关系
+	for _, rel := range relations {
+		gormQuery = gormQuery.Preload(rel)
 	}
-	return nil, err
+
+	err = gormQuery.First(&v).Error
+    return v, err
 }
 
-// GetAll{{modelName}} retrieves all {{modelName}} matches certain condition. Returns empty list if
+// GetAll retrieves all {{modelName}} matches certain condition. Returns empty list if
 // no records exist
-func GetAll{{modelName}}(query map[string]string, fields []string, sortby []string, order []string,
-	offset int64, limit int64) (ml []interface{}, err error) {
-	o := orm.NewOrm()
-	qs := o.QueryTable(new({{modelName}}))
-	// query k=v
-	for k, v := range query {
-		// rewrite dot-notation to Object__Attribute
-		k = strings.Replace(k, ".", "__", -1)
-		if strings.Contains(k, "isnull") {
-			qs = qs.Filter(k, (v == "true" || v == "1"))
-		} else {
-			qs = qs.Filter(k, v)
-		}
-	}
-	// order by:
-	var sortFields []string
-	if len(sortby) != 0 {
-		if len(sortby) == len(order) {
-			// 1) for each sort field, there is an associated order
-			for i, v := range sortby {
-				orderby := ""
-				if order[i] == "desc" {
-					orderby = "-" + v
-				} else if order[i] == "asc" {
-					orderby = v
-				} else {
-					return nil, errors.New("Error: Invalid order. Must be either [asc|desc]")
-				}
-				sortFields = append(sortFields, orderby)
-			}
-			qs = qs.OrderBy(sortFields...)
-		} else if len(sortby) != len(order) && len(order) == 1 {
-			// 2) there is exactly one order, all the sorted fields will be sorted by this order
-			for _, v := range sortby {
-				orderby := ""
-				if order[0] == "desc" {
-					orderby = "-" + v
-				} else if order[0] == "asc" {
-					orderby = v
-				} else {
-					return nil, errors.New("Error: Invalid order. Must be either [asc|desc]")
-				}
-				sortFields = append(sortFields, orderby)
-			}
-		} else if len(sortby) != len(order) && len(order) != 1 {
-			return nil, errors.New("Error: 'sortby', 'order' sizes mismatch or 'order' size is not 1")
-		}
-	} else {
-		if len(order) != 0 {
-			return nil, errors.New("Error: unused 'order' fields")
-		}
+func GetAll(query map[string]string, relations []string, fields []string, sortFields []string, offset int64, limit int64) (ml []Model, total int64, err error) {
+    //过虑条件
+    gormQuery := db.NewGormQuery(query)
+
+    //排序
+    for _, v := range sortFields {
+        gormQuery = gormQuery.Order(v)
+    }
+
+    //获取总页数
+    var itemCount int64
+    gormQuery.Model(Model{}).Count(&itemCount)
+
+    //select
+    if len(fields) > 0 {
+        gormQuery = gormQuery.Select(strings.Join(fields, ","))
+    }
+
+	//载入关连关系
+	for _, rel := range relations {
+		gormQuery = gormQuery.Preload(rel)
 	}
 
-	var l []{{modelName}}
-	qs = qs.OrderBy(sortFields...)
-	if _, err = qs.Limit(limit, offset).All(&l, fields...); err == nil {
-		if len(fields) == 0 {
-			for _, v := range l {
-				ml = append(ml, v)
-			}
-		} else {
-			// trim unused fields
-			for _, v := range l {
-				m := make(map[string]interface{})
-				val := reflect.ValueOf(v)
-				for _, fname := range fields {
-					m[fname] = val.FieldByName(fname).Interface()
-				}
-				ml = append(ml, m)
-			}
-		}
-		return ml, nil
-	}
-	return nil, err
+    //查询
+	var l []Model
+    err = gormQuery.Limit(limit).Offset(offset).Find(&l).Error
+    if err != nil {
+        return nil, itemCount, err
+    }
+
+    // 如果需要精简返回值，将返回列表类型设为 []interface{}，再调用以下函数
+    //ml = db.SelectField(l, fields)
+
+	return l, itemCount, err
 }
 
-// Update{{modelName}} updates {{modelName}} by Id and returns error if
+// Update updates {{modelName}} by Id and returns error if
 // the record to be updated doesn't exist
-func Update{{modelName}}ById(m *{{modelName}}) (err error) {
-	o := orm.NewOrm()
-	v := {{modelName}}{Id: m.Id}
-	// ascertain id exists in the database
-	if err = o.Read(&v); err == nil {
-		var num int64
-		if num, err = o.Update(m); err == nil {
-			fmt.Println("Number of records updated in database:", num)
-		}
-	}
-	return
+func Update(m *Model) (err error) {
+	return db.Conn.Save(m).Error
 }
 
-// Delete{{modelName}} deletes {{modelName}} by Id and returns error if
+// Delete deletes {{modelName}} by Id and returns error if
 // the record to be deleted doesn't exist
-func Delete{{modelName}}(id int) (err error) {
-	o := orm.NewOrm()
-	v := {{modelName}}{Id: id}
+func Delete(id int) (err error) {
+	v := new(Model)
+
 	// ascertain id exists in the database
-	if err = o.Read(&v); err == nil {
-		var num int64
-		if num, err = o.Delete(&{{modelName}}{Id: id}); err == nil {
-			fmt.Println("Number of records deleted in database:", num)
-		}
+	err = db.Conn.Where(id).First(&v).Error
+	if err != nil {
+		return err
 	}
-	return
+
+	return  db.Conn.Delete(&v).Error
 }
+
+// BeforeCreate hook
+//func (t *{{modelName}}) BeforeCreate(scope *gorm.Scope) error {
+//    //scope.SetColumn("ID", uuid.New())
+//    return nil
+//}
 `
 	CtrlTPL = `package controllers
 
 import (
-	"{{pkgPath}}/models"
-	"encoding/json"
-	"errors"
-	"strconv"
-	"strings"
+	{{ctrlName}}Model "{{pkgPath}}/models/{{subPath}}"
+    {{ctrlName}}Filter "{{pkgPath}}/filters/{{subPath}}"
+	{{pkg}}	
 
-	"github.com/astaxie/beego"
+    "github.com/yimishiji/bee/pkg/base"
+    "github.com/yimishiji/bee/pkg/structs"
 )
 
 // {{ctrlName}}Controller operations for {{ctrlName}}
 type {{ctrlName}}Controller struct {
-	beego.Controller
+	base.Controller
+    filter *{{ctrlName}}Filter.Filter
 }
 
 // URLMapping ...
@@ -1158,24 +1674,31 @@ func (c *{{ctrlName}}Controller) URLMapping() {
 	c.Mapping("Delete", c.Delete)
 }
 
+// init inputFilter
+func (c *{{ctrlName}}Controller) Prepare() {
+    c.filter = {{ctrlName}}Filter.NewFilter(c.Ctx.Input)
+}
+
 // Post ...
 // @Title Post
 // @Description create {{ctrlName}}
 // @Param	body		body 	models.{{ctrlName}}	true		"body for {{ctrlName}} content"
-// @Success 201 {int} models.{{ctrlName}}
+// @Success 201 {int} models.{{ctrlName}}Model.{{ctrlName}}
 // @Failure 403 body is empty
 // @router / [post]
 func (c *{{ctrlName}}Controller) Post() {
-	var v models.{{ctrlName}}
-	if err := json.Unmarshal(c.Ctx.Input.RequestBody, &v); err == nil {
-		if _, err := models.Add{{ctrlName}}(&v); err == nil {
+    var v {{ctrlName}}Model.Model
+    if f, err := c.filter.GetPost(); err == nil {
+        structs.StructMerge(&v, f)
+		{{createAuto}}
+		if err := {{ctrlName}}Model.Add(&v); err == nil {
 			c.Ctx.Output.SetStatus(201)
-			c.Data["json"] = v
+			c.Data["json"] = c.Resp(base.ApiCode_SUCC, "ok", v)
 		} else {
-			c.Data["json"] = err.Error()
+			c.Data["json"] = c.Resp(base.ApiCode_SYS_ERROR, "system error", err.Error())
 		}
 	} else {
-		c.Data["json"] = err.Error()
+		c.Data["json"] = c.Resp(base.ApiCode_VALIDATE_ERROR, "invalid:"+err.Error(), err.Error())
 	}
 	c.ServeJSON()
 }
@@ -1184,17 +1707,24 @@ func (c *{{ctrlName}}Controller) Post() {
 // @Title Get One
 // @Description get {{ctrlName}} by id
 // @Param	id		path 	string	true		"The key for staticblock"
-// @Success 200 {object} models.{{ctrlName}}
+// @Param	rels	query 	string	false		"Many are separated by commas."
+// @Success 200 {object} models.{{ctrlName}}Model.{{ctrlName}}
 // @Failure 403 :id is empty
 // @router /:id [get]
 func (c *{{ctrlName}}Controller) GetOne() {
-	idStr := c.Ctx.Input.Param(":id")
-	id, _ := strconv.Atoi(idStr)
-	v, err := models.Get{{ctrlName}}ById(id)
+    id := c.filter.GetId(":id")
+
+	rels := []string{}
+	relsStr := strings.Trim(c.Input().Get("rels"), "")
+	if relsStr != "" {
+		rels = strings.Split(relsStr, ",")
+	}
+
+	v, err := {{ctrlName}}Model.GetById(id, rels...)
 	if err != nil {
-		c.Data["json"] = err.Error()
+		c.Data["json"] = c.Resp(base.ApiCode_VALIDATE_ERROR, "not find", err.Error())
 	} else {
-		c.Data["json"] = v
+		c.Data["json"] = c.Resp(base.ApiCode_SUCC, "ok", v)
 	}
 	c.ServeJSON()
 }
@@ -1202,62 +1732,30 @@ func (c *{{ctrlName}}Controller) GetOne() {
 // GetAll ...
 // @Title Get All
 // @Description get {{ctrlName}}
-// @Param	query	query	string	false	"Filter. e.g. col1:v1,col2:v2 ..."
+// @Param	query	query	string	false	"Filter. e.g. col1:v1,col2:v2,col-isnull:,col:>50,col:like-adc,col:between-10-20 ..."
+// @Param	rels	query 	string	false	"Associated data identifiers,  Many are separated by commas. e.g. User,User.Info,User.Address"
 // @Param	fields	query	string	false	"Fields returned. e.g. col1,col2 ..."
 // @Param	sortby	query	string	false	"Sorted-by fields. e.g. col1,col2 ..."
 // @Param	order	query	string	false	"Order corresponding to each sortby field, if single value, apply to all sortby fields. e.g. desc,asc ..."
 // @Param	limit	query	string	false	"Limit the size of result set. Must be an integer"
 // @Param	offset	query	string	false	"Start position of result set. Must be an integer"
-// @Success 200 {object} models.{{ctrlName}}
+// @Success 200 {object} models.{{ctrlName}}Model.{{ctrlName}}
 // @Failure 403
 // @router / [get]
 func (c *{{ctrlName}}Controller) GetAll() {
-	var fields []string
-	var sortby []string
-	var order []string
-	var query = make(map[string]string)
-	var limit int64 = 10
-	var offset int64
-
-	// fields: col1,col2,entity.col3
-	if v := c.GetString("fields"); v != "" {
-		fields = strings.Split(v, ",")
-	}
-	// limit: 10 (default is 10)
-	if v, err := c.GetInt64("limit"); err == nil {
-		limit = v
-	}
-	// offset: 0 (default is 0)
-	if v, err := c.GetInt64("offset"); err == nil {
-		offset = v
-	}
-	// sortby: col1,col2
-	if v := c.GetString("sortby"); v != "" {
-		sortby = strings.Split(v, ",")
-	}
-	// order: desc,asc
-	if v := c.GetString("order"); v != "" {
-		order = strings.Split(v, ",")
-	}
-	// query: k:v,k:v
-	if v := c.GetString("query"); v != "" {
-		for _, cond := range strings.Split(v, ",") {
-			kv := strings.SplitN(cond, ":", 2)
-			if len(kv) != 2 {
-				c.Data["json"] = errors.New("Error: invalid query key/value pair")
-				c.ServeJSON()
-				return
-			}
-			k, v := kv[0], kv[1]
-			query[k] = v
-		}
-	}
-
-	l, err := models.GetAll{{ctrlName}}(query, fields, sortby, order, offset, limit)
+    pageParams, err := c.filter.GetListPrams()
 	if err != nil {
-		c.Data["json"] = err.Error()
+		c.Data["json"] = c.Resp(base.ApiCode_ILLEGAL_ERROR, "illegal operation", err.Error())
+		c.ServeJSON()
+		return
+	}
+
+    l, itemCount, err := {{ctrlName}}Model.GetAll(pageParams.Querys, pageParams.Rels, pageParams.Field, pageParams.SortFields, pageParams.Offsets, pageParams.Limits)
+	if err != nil {
+		c.Data["json"] = c.Resp(base.ApiCode_ILLEGAL_ERROR, "not find", err.Error())
 	} else {
-		c.Data["json"] = l
+        list := base.NewListPageData(pageParams.Limits, pageParams.Offsets, itemCount, l)
+        c.Data["json"] = c.Resp(base.ApiCode_SUCC, "ok", list)
 	}
 	c.ServeJSON()
 }
@@ -1271,17 +1769,24 @@ func (c *{{ctrlName}}Controller) GetAll() {
 // @Failure 403 :id is not int
 // @router /:id [put]
 func (c *{{ctrlName}}Controller) Put() {
-	idStr := c.Ctx.Input.Param(":id")
-	id, _ := strconv.Atoi(idStr)
-	v := models.{{ctrlName}}{Id: id}
-	if err := json.Unmarshal(c.Ctx.Input.RequestBody, &v); err == nil {
-		if err := models.Update{{ctrlName}}ById(&v); err == nil {
-			c.Data["json"] = "OK"
+    id := c.filter.GetId(":id")
+    v, err := {{ctrlName}}Model.GetById(id)
+    if err != nil {
+        c.Data["json"] = c.Resp(base.ApiCode_VALIDATE_ERROR, "invalid:"+err.Error(), err.Error())
+        c.ServeJSON()
+        return
+    }
+
+    if f, err := c.filter.GetPut(); err == nil {
+        structs.StructMerge(&v, f)
+		{{updateAuto}}
+		if err := {{ctrlName}}Model.Update(&v); err == nil {
+			c.Data["json"] = c.Resp(base.ApiCode_SUCC, "ok")
 		} else {
-			c.Data["json"] = err.Error()
+			c.Data["json"] = c.Resp(base.ApiCode_SYS_ERROR, "system error", err.Error())
 		}
 	} else {
-		c.Data["json"] = err.Error()
+		c.Data["json"] = c.Resp(base.ApiCode_VALIDATE_ERROR, "invalid:"+err.Error(), err.Error())
 	}
 	c.ServeJSON()
 }
@@ -1294,16 +1799,102 @@ func (c *{{ctrlName}}Controller) Put() {
 // @Failure 403 id is empty
 // @router /:id [delete]
 func (c *{{ctrlName}}Controller) Delete() {
-	idStr := c.Ctx.Input.Param(":id")
-	id, _ := strconv.Atoi(idStr)
-	if err := models.Delete{{ctrlName}}(id); err == nil {
-		c.Data["json"] = "OK"
+    id := c.filter.GetId(":id")
+	if err := {{ctrlName}}Model.Delete(id); err == nil {
+		c.Data["json"] = c.Resp(base.ApiCode_SUCC, "ok")
 	} else {
-		c.Data["json"] = err.Error()
+		c.Data["json"] = c.Resp(base.ApiCode_ILLEGAL_ERROR, "illegal operation", err.Error())
 	}
 	c.ServeJSON()
 }
 `
+	FilterTPL = `
+package {{modelName}}Filter
+
+import (
+	"encoding/json"
+	"errors"
+
+	"github.com/astaxie/beego/context"
+	"github.com/astaxie/beego/validation"
+	"github.com/yimishiji/bee/pkg/filters"
+)
+
+type Filter struct {
+	filters.InputFilter
+}
+
+func NewFilter(r *context.BeegoInput) *Filter {
+	return &Filter{
+		filters.InputFilter{
+			Input: r,
+		},
+	}
+}
+
+//post提交 数据格式
+type Post struct {
+    {{inpuTfieldList}}
+}
+
+//获取Post接交数据
+func (this *Filter) GetPost() (v Post, err error) {
+	if err := json.Unmarshal(this.Input.RequestBody, &v); err == nil {
+		//验证器
+		valid := validation.Validation{}{{ValidRuleList}}
+		if valid.HasErrors() {
+			err = errors.New(valid.Errors[0].String())
+			return v, err
+		}
+		//自定义验证方法
+		//if filters.InStingArr(v.Type, []string{"orders", "goods", "users"}) == false {
+		//	return v, errors.New("type is not enable")
+		//}
+		return v, nil
+	} else {
+		return v, err
+	}
+}
+
+//Put提交 数据格式, 每个表单提交需针对性定义一份结构体,
+type Put struct {
+     {{inpuTfieldList}}
+}
+
+//获取put提交数据
+func (this *Filter) GetPut() (v Put, err error) {
+	if err := json.Unmarshal(this.Input.RequestBody, &v); err == nil {
+		//验证器
+		valid := validation.Validation{}{{ValidRuleList}}
+		if valid.HasErrors() {
+			err = errors.New(valid.Errors[0].String())
+			return v, err
+		}
+		return v, nil
+	} else {
+		return v, err
+	}
+}
+
+//分页参数
+func (this *Filter) GetListPrams() (params *filters.PageCommonParams, err error) {
+	if params, err := this.GetPagePublicParams(); err == nil {
+
+		//验证筛选的条件合法性
+		//if t, ok := params.Querys["type"]; ok {
+		//	if filters.InStingArr(t, []string{"orders", "goods", "users"}) == false {
+		//		return params, errors.New("type is not enable")
+		//	}
+		//}
+
+		return params, nil
+	} else {
+		return params, err
+	}
+}
+`
+	FilterValidRuleTPL = `
+		valid.{{validFunc}}(v.{{colName}}, "{{colColumn}}").Message("{{msg}}")`
 	RouterTPL = `// @APIVersion 1.0.0
 // @Title beego Test API
 // @Description beego has a very cool tools to autogenerate documents for your API
@@ -1331,6 +1922,510 @@ func init() {
 			beego.NSInclude(
 				&controllers.{{ctrlName}}Controller{},
 			),
-		),
+		),`
+	VueIndexTPL = `
+<template>
+    <div class="main">
+        <div class="top">
+            <v-select placeholder="请选择类型" size="lg" class="change" v-model="searchType" :data="options"></v-select>
+            <div class="search">
+                <v-input placeholder="请输入" size="large" v-model="searchText" class="distance-up10" @keyup.enter.native="refreshTable()"></v-input>
+                <v-button type="primary" class="search-button" @click="refreshTable()" size="large">搜&nbsp;索</v-button>
+            </div>
+            <v-button type="primary" class="add-button" size="large" @click="create" >
+                <v-icon type="plus"></v-icon>
+                &nbsp;&nbsp;添加
+            </v-button>
+            <span  @click="settingCol()" class="pull-right"><v-icon type="setting" class="colsetting"></v-icon></span>
+        </div>
+        <div class="table goods">
+            <v-data-table :data='loadData' :columns='columns' ref="xtable" stripe bordered >
+                <template slot="td" slot-scope="props" attrs='width="502px"'>
+
+                    <div v-if="props.column.field=='action'" class="operate">
+                        <span @click="view(props.item)">
+                            <v-tooltip content="查看" :placement="props.index==0 ? 'bottom' : 'top'" ><v-icon type="eye-o"></v-icon></v-tooltip>
+                        </span>
+                        <span @click="edit(props.item)">
+                            <v-tooltip content="编辑" :placement="props.index==0 ? 'bottom' : 'top'" ><v-icon type="edit"></v-icon></v-tooltip>
+                        </span>
+                        <v-popconfirm :placement="props.index==0 ? 'bottom' : 'top'" title=" 确定删除吗?" @confirm="del(props.item)">
+                            <v-tooltip content="删除" :placement="props.index==0 ? 'bottom' : 'top'" ><i class="fa fa-trash-o "></i></v-tooltip>
+                        </v-popconfirm>
+                    </div>
+
+                    <span v-else v-html="props.content"></span>
+                </template>
+            </v-data-table>
+        </div>
+        <create-item @refreshList="refreshTable" ref="createRef"></create-item>
+        <edit-item @refreshList="refreshTable" ref="editRef"></edit-item>
+        <col-setting :columnsSetting="columnsSetting" @setCols="setColomns" ref="colSettingRef"></col-setting>
+    </div>
+</template>
+
+<script>
+    import {hostName} from '../../config/api'
+    import {formatDate} from '../../common/date'
+    import createVue from './create-component.vue'
+    import editVue from './edit-component.vue'
+    import colSetting from './../common/colsetting-component.vue'
+
+    const IndexApi = hostName+"v1/{{pageUrl}}";
+    const DeleteAPI = hostName+"v1/{{pageUrl}}";
+
+    export default {
+        data () {
+            return {
+                //下拉搜索选择
+                options    : [ {{selectOptions}}
+                ],
+                //下拉选中
+                searchType : '',
+                //搜索框
+                searchText : '',
+                //商品列表---状态
+                checkYes   : 1,
+                checkNo    : 1,
+                checkStatus: '',
+                //商品列表头部
+                columns    : [{{listColumnShow}}
+                    {title: "operate", field: 'action', show: true},
+                ],
+                columnsSetting : [{{listColumn}}
+                    {title: "operate", field: 'action', show: true},
+                ],
+            }
+        },
+        created: function () {
+            this.$store.state.BreadShow = true;
+            this.$store.state.oneValue = {value: "Index", url: ""};
+            this.$store.state.twoValue = {value: '{{tbName}}', url: ""};
+            this.$store.state.threeValue = {value: "List", url: ""};
+        },
+        components:{
+            'create-item': createVue,
+            'edit-item': editVue,
+            'col-setting': colSetting,
+        },
+        methods: {
+            refreshTable:function () {
+              this.$refs.xtable.refresh();
+            },
+            loadData(pramas) {
+                let params = {
+                    'limit': pramas.pageSize,
+                    'page': pramas.pageNo,
+                    'order':'desc',
+                    'sortby':"{{tbPk}}",
+                    //'query':{}
+                };
+
+                if(this.searchType && this.searchText.trim()){
+                    params[ "query"] = this.searchType+":"+this.searchText.trim();
+                }
+
+                return this.$http.get(IndexApi,{ params }).then(resp =>{
+                    if (resp.data.status == 1){
+                        var result = resp.data.results;
+                        let list = result.list? result.list : [];
+                        {{colModifyStr}}
+                        let listdata = {};
+                        listdata['result'] = list;
+                        listdata['totalCount'] = Number(result.totalCount);
+                        return listdata;
+                    }
+                });
+            },
+            create: function () {
+                this.$refs.createRef.show = true;
+            },
+            view: function (item) {
+                this.$refs.editRef.{{tbPk}} = item.{{tbPk}};
+                for (let key in item) {
+                    this.$refs.editRef.customForm[key] = item[key];
+                }
+                this.$refs.editRef.updateMode = false
+                this.$refs.editRef.show = true;
+            },
+            edit: function (item) {
+                this.$refs.editRef.{{tbPk}} = item.{{tbPk}};
+                for (let key in item) {
+                    this.$refs.editRef.customForm[key] = item[key];
+                }
+                this.$refs.editRef.updateMode = true;
+                this.$refs.editRef.show = true;
+            },
+            del:function (item) {
+                this.$store.state.loading     = true;
+                this.$http.delete(DeleteAPI+"/"+item.{{tbPk}}).then(resp=> {
+                    this.$store.state.loading = false;
+                    if (resp.data.status == 1) {
+                        this.$notification.success({
+                            message    : '提示',
+                            duration   : 2,
+                            description: "删除成功"
+                        });
+                        this.refreshTable();
+                    }
+                });
+            },
+            format:function(time){
+                let date = new Date(parseInt(time)*1000);
+                return formatDate(date,'yyyy-MM-dd hh:mm:ss');
+            },
+            settingCol:function(){
+                this.$refs.colSettingRef.show = true;
+            },
+            setColomns:function(cols){
+                this.columns = cols;
+            },
+        }
+    }
+</script>
+
+<style scoped>
+   .main{
+       padding: 24px;
+       width: 100%;
+       min-height: calc(100% - 52px);
+       overflow: auto;
+       background: #fff;
+   }
+   .top {
+       min-width: 540px;
+       min-height: 38px;
+       text-align: left;
+   }
+   /* 下拉 */
+   .top .change {
+       margin-right: 10px;
+       width: 100px;
+       float: left;
+   }
+   /* 搜索 */
+   .top .add-button {
+       margin-left: 10px;
+       float: left;
+   }
+   .top .search {
+       width: 330px;
+       height: 32px;
+       float: left;
+       position: relative;
+   }
+   .top .search input {
+       padding: 6px 8px 6px 6px;
+       width: 260px;
+       float: left;
+       box-shadow:none !important;
+   }
+   .top .search .search-button {
+       width: 70px;
+       height: 32px;
+       position: absolute;
+       top: 0px;
+       right: 4px;
+       z-index: 10;
+       border-bottom-left-radius: 0px;
+       border-top-left-radius: 0px;
+   }
+   /* 列表 */
+   .table {
+       margin-top: 10px;
+       width: 100%;
+   }
+    .table .new{
+        width: 20px;
+        height:20px;
+        position:absolute;
+        top:0px;
+        left:0px;
+        z-index: 10;
+        border-width:20px 20px 0px 0px;
+        border-style:solid;
+        border-color:#fbc900 transparent transparent;
+    }
+    .table .new-zi{
+        color: #ffffff;
+        position: absolute;
+        top: -2px;
+        left: 1px;
+        z-index: 11;
+    }
+    .colsetting{
+        font-size: 20px;
+        padding-top: 10px;
+        right: 25px;
+        position: absolute;
+    }
+</style>
 `
+	VueIndexColModifyTPL = `
+                        for (let i in list) {{{indexModifyRows}}
+                        }
+`
+	VueIndexListColumnTPL = `
+                    {title: "{{fieldComment}}", field: '{{fieldName}}', show: true},`
+	VueIndexSelectOptionTPL = `
+                    { value: '{{fieldName}}', label: '{{fieldComment}}' },`
+	VueCreateComponentTPL = `<template>
+    <v-modal class="model" title="{{tbName}}" :width='540' :visible="show" @cancel="ruleCancel">
+        <v-form direction="horizontal" :model="customForm" :rules="customRules" ref="customRuleForm"  @keyup.enter.native="submitForm('customRuleForm')">
+            {{fromField}}
+
+            <div class="layer-button">
+                <v-button type="primary" @click="submitForm('customRuleForm')" :loading="this.$store.state.loading">{{
+                    this.$store.state.loading ?
+                    "正在发送中" : "确认" }}
+                </v-button>
+                <v-button @click="ruleCancel">取消</v-button>
+            </div>
+        </v-form>
+    </v-modal>
+</template>
+
+<script>
+  import {hostName} from '../../config/api';
+
+  const createApi = hostName + "v1/{{pageUrl}}";
+
+  export default {
+      data() {
+          return {
+              customForm: {{{customField}}
+              },
+              show: false,
+              customRules:{{{customRules}}
+              },
+              labelCol: {
+                  span: 6
+              },
+              wrapperCol: {
+                  span: 14
+              }
+          }
+      },
+      methods: {
+		  submitForm: function (formName) {
+              this.$refs[formName].validate((valid) => {
+                  if(valid) {
+					  let params = this.customForm;{{createSubmitDataFix}}
+					  this.$store.state.loading     = true;
+					  this.$http.post(createApi, this.$qs.parse(params)).then(resp=> {
+						  this.$store.state.loading = false;
+						  if (resp.data.status == 1) {
+							  this.$notification.success({
+								  message    : '提示',
+								  duration   : 2,
+								  description: "创建成功"
+							  });
+							  this.ruleCancel();
+							  this.$emit('refreshList');
+						  }
+					  });
+                  }
+              });
+          },
+          //取消
+          ruleCancel: function () {
+              for(var i in this.customForm) {
+                  this.customForm[i] = '';
+              }
+              this.show = false;
+          }
+      }
+  }
+</script>
+
+<style scoped>
+    .text-input {
+        margin: 10px auto;
+        width: 80%;
+        text-align: center;
+    }
+</style>
+`
+	VueCreateFieldComponentTPL = ` 
+			<v-form-item label="{{fieldComment}}" :label-col="labelCol" :wrapper-col="wrapperCol" prop="{{fieldName}}" has-feedback>
+                <v-input v-model="customForm.{{fieldName}}" size="large"></v-input>
+            </v-form-item>
+`
+	VueCreateCustomFormComponentTPL = `
+				  {{fieldName}}  : '{{fieldDefault}}',`
+	VueCreateCustomRulesComponentTPL = `
+                  {{fieldName}}:[
+                      {{customRules}}
+                  ],`
+
+	vueEditComponentTPL = `<template>
+    <v-modal class="add-user"  :title=" updateMode ? '编辑' : '详情' " :width='640' :visible="show" @cancel="ruleCancel">
+        <v-form direction="horizontal"  v-bind:class="{ 'view-mode': !updateMode }" :model="customForm" :rules="customRules" ref="customRuleForm" @keyup.enter.native="submitForm('customRuleForm')">
+            {{fromField}}
+            <div class="layer-button">
+                <v-button v-if="updateMode" type="primary" style="margin-right:10px" @click.prevent="submitForm('customRuleForm')" :loading="loading">{{ loading ? "正在修改中" : "马上修改" }}</v-button>
+                <v-button type="ghost" @click.prevent="ruleCancel()">{{ updateMode ? "取消" : "关闭" }}</v-button>
+            </div>
+        </v-form>
+    </v-modal>
+</template>
+
+<script>
+  import {hostName} from '../../config/api'
+
+  const UpdateAPI = hostName + "v1/{{pageUrl}}";
+
+  export default {
+      data() {
+          return {
+              {{tbPk}}  : '',
+              show      : false,
+              loading   : false,
+              updateMode: false,
+              customForm: {{{customField}}
+              },
+              customRules:{{{customRules}}
+              },
+              labelCol: {
+                  span: 6
+              },
+              wrapperCol: {
+                  span: 14
+              }
+          }
+      },
+      methods: {
+          submitForm: function (formName) {
+              this.$refs[formName].validate((valid) => {
+                  if(valid) {
+                      let params = {{{editSubmitItems}}
+                      };
+
+                      this.loading     = true;
+                      this.$http.put(UpdateAPI + "/" + this.customForm.{{tbPk}}, this.$qs.parse(params)).then(resp => {
+                          this.loading = false;
+                          if (resp.data.status == 1) {
+                              this.$notification.success({
+                                  message    : '提示',
+                                  duration   : 2,
+                                  description: resp.data.status_txt
+                              });
+                              this.ruleCancel();
+                              this.$emit('refreshList');
+                          }
+                      });
+                  }else{
+                      alert(valid);
+                  }
+              });
+          },
+          //取消
+          ruleCancel: function () {
+              this.show = false;
+              this.loading = false;
+              this.customForm = {};
+          }
+      }
+  }
+</script>
+
+<style scoped>
+    .text-input {
+        margin: 10px auto;
+        width: 80%;
+        text-align: center;
+    }
+    .view-mode .ant-form-item{
+        margin-bottom: 0px;
+    }
+    .view-mode .ant-form-item-required:before{
+        display:none;
+    }
+</style>
+`
+	vueEditComponentFromItemTPL = `
+            <v-form-item label="{{fieldComment}}" :label-col="labelCol" :wrapper-col="wrapperCol" prop="{{fieldName}}" has-feedback>
+                <v-input v-if="updateMode"  v-model="customForm.{{fieldName}}" size="large" {{disabled}}></v-input>
+                <span v-if="!updateMode"  class="ant-form-text">{{customForm.{{fieldName}}}}</span>
+            </v-form-item>
+`
+	vueEditComponentSubmitItemTPL = `
+                          {{fieldName}}  : this.customForm.{{fieldName}},`
+	vueColSettingComponentTPL = `
+<template>
+    <v-modal class="model" title="显示" :width='220' :visible="show" @cancel="ruleCancel">
+        <v-form direction="horizontal">
+            <ul>
+                <template v-for="item in columnsSetting">
+                   <li> <v-checkbox v-model="item.show" :true-value="true" :false-value="false">{{item.title}}</v-checkbox></li>
+                </template>
+            </ul>
+
+
+            <div class="layer-button">
+                <v-button @click="ruleCancel">完成</v-button>
+            </div>
+        </v-form>
+    </v-modal>
+</template>
+
+<script>
+  export default {
+      data() {
+          return {
+              show: false,
+              labelCol: {
+                  span: 6
+              },
+              wrapperCol: {
+                  span: 14
+              }
+          }
+      },
+      props: ['columnsSetting'],
+      methods: {
+          //取消
+          ruleCancel: function () {
+              var cols = [];
+              for (var i=0;i<this.columnsSetting.length;i++)
+              {
+                  if(this.columnsSetting[i].show){
+                      cols.push(this.columnsSetting[i]);
+                  }
+              }
+              this.$emit('setCols', cols);
+              this.show = false;
+          }
+      }
+  }
+</script>
+
+<style scoped>
+    li {
+        margin-bottom: 5px;
+    }
+</style>
+
+`
+	operateListTPL = `
+	operateList = append(operateList, RoleRight{
+		RightAction: "[GET]/{{pageUrl}}",
+	})
+	operateList = append(operateList, RoleRight{
+		RightAction: "[POST]/{{pageUrl}}",
+	})
+	operateList = append(operateList, RoleRight{
+		RightAction: "[PUT]/{{pageUrl}}",
+	})
+	operateList = append(operateList, RoleRight{
+		RightAction: "[DELETE]/{{pageUrl}}",
+	})
+`
+	vueRuleTPL = `
+              {
+                  path: '/{{pageUrl}}/index',
+                  component: name => require(['../components/{{filPath}}/index'], name),
+              },`
+	menuListTPL = `
+                    {"name":"{{ctrlName}}","url":"/{{pageUrl}}/index","icon":"bars"},`
 )
