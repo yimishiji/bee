@@ -46,7 +46,11 @@ func (c *Controller) Init(ctx *context.Context, controllerName, actionName strin
 //输出格式统一处理
 func (c *Controller) Resp(appCode ApiCode, msg string, data ...interface{}) *Resp {
 	resp := new(Resp)
-	resp.Results = data[0]
+	if len(data) == 1 {
+		resp.Results = data[0]
+	} else {
+		resp.Results = data
+	}
 	resp.Status = appCode
 	resp.StatusTxt = msg
 	resp.TimeTaken = c.Ctx.ResponseWriter.Elapsed.Seconds()
